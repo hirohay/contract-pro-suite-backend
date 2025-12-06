@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -17,7 +18,7 @@ type Config struct {
 	// Supabase設定
 	SupabaseDBURL          string `envconfig:"SUPABASE_DB_URL" required:"true"`
 	SupabaseServiceRoleKey string `envconfig:"SUPABASE_SERVICE_ROLE_KEY" required:"true"`
-	SupabaseJWTSecret     string `envconfig:"SUPABASE_JWT_SECRET" required:"true"`
+	SupabaseJWTSecret      string `envconfig:"SUPABASE_JWT_SECRET" required:"true"`
 	SupabaseURL            string `envconfig:"SUPABASE_URL" required:"true"`
 
 	// テナント設定
@@ -31,6 +32,27 @@ type Config struct {
 	DBMinConns        int           `envconfig:"DB_MIN_CONNS" default:"5"`
 	DBMaxConnLifetime time.Duration `envconfig:"DB_MAX_CONN_LIFETIME" default:"5m"`
 	DBMaxConnIdleTime time.Duration `envconfig:"DB_MAX_CONN_IDLE_TIME" default:"1m"`
+
+	// テナント設定（サブドメイン）
+	BaseDomain                string `envconfig:"BASE_DOMAIN" default:"contractprosuite.com"`
+	AllowedDomainsStr         string `envconfig:"ALLOWED_DOMAINS" default:"contractprosuite.com,localhost"`
+	EnableSubdomainValidation bool   `envconfig:"ENABLE_SUBDOMAIN_VALIDATION" default:"true"`
+}
+
+// AllowedDomains 許可されたドメインのリストを取得
+func (c *Config) AllowedDomains() []string {
+	if c.AllowedDomainsStr == "" {
+		return []string{c.BaseDomain}
+	}
+	domains := strings.Split(c.AllowedDomainsStr, ",")
+	result := make([]string, 0, len(domains))
+	for _, domain := range domains {
+		domain = strings.TrimSpace(domain)
+		if domain != "" {
+			result = append(result, domain)
+		}
+	}
+	return result
 }
 
 // Load 環境変数から設定を読み込む
@@ -67,4 +89,3 @@ func (c *Config) Validate() error {
 	}
 	return nil
 }
-

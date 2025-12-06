@@ -9,8 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	authmiddleware "contract-pro-suite/internal/middleware"
 	"contract-pro-suite/internal/shared/config"
 	"contract-pro-suite/internal/shared/db"
@@ -18,6 +16,9 @@ import (
 	"contract-pro-suite/services/auth/repository"
 	"contract-pro-suite/services/auth/usecase"
 	dbgen "contract-pro-suite/sqlc"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
@@ -55,7 +56,11 @@ func main() {
 	// ルーターを設定
 	r := chi.NewRouter()
 
-	// ミドルウェア
+	// ミドルウェア（適用順序が重要）
+	// 1. ログミドルウェア（最初に適用して全リクエストを記録）
+	r.Use(authmiddleware.AuditMiddleware())
+
+	// 2. 標準ミドルウェア
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -80,9 +85,13 @@ func main() {
 
 	// APIルート
 	r.Route("/api/v1", func(r chi.Router) {
-		// 認証ミドルウェア
+		// 認証ミドルウェア（順序が重要）
+		// 1. JWT検証
 		r.Use(authmiddleware.AuthMiddleware(cfg))
+		// 2. ユーザー情報取得
 		r.Use(authmiddleware.EnhancedAuthMiddleware(authUsecase))
+		// 3. テナント検証（client_id抽出と検証）
+		r.Use(authmiddleware.TenantMiddleware(cfg, clientRepo, authUsecase))
 
 		// 認証ハンドラ
 		authHandler.RegisterRoutes(r)
@@ -133,4 +142,3 @@ func main() {
 
 	log.Println("Server exited")
 }
-

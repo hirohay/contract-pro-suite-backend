@@ -5,20 +5,21 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"contract-pro-suite/services/auth/domain"
 	"contract-pro-suite/services/auth/repository"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // AuthUsecase 認証ユースケース
 type AuthUsecase interface {
 	// GetUserContext JWTから取得したユーザーIDでデータベースからユーザー情報と権限を取得
 	GetUserContext(ctx context.Context, jwtUserID string) (*domain.UserContext, error)
-	
+
 	// ValidateClientAccess ユーザーのクライアントアクセス権限を検証
 	ValidateClientAccess(ctx context.Context, userCtx *domain.UserContext, clientID uuid.UUID) error
-	
+
 	// CheckPermission 権限チェック（将来の実装用）
 	CheckPermission(ctx context.Context, userCtx *domain.UserContext, feature, action string) error
 }
@@ -66,7 +67,7 @@ func (u *authUsecase) GetUserContext(ctx context.Context, jwtUserID string) (*do
 	// 注意: client_usersはclient_idが必要なので、全件検索は非効率
 	// 実際の実装では、JWTにclient_idを含めるか、別の方法で特定する必要がある
 	// ここでは簡易実装として、emailで検索（複数クライアントに同じemailが存在する可能性があるため注意）
-	
+
 	// 将来的には、JWTにclient_idを含めるか、サブドメインからclient_idを取得する実装が必要
 	return nil, errors.New("user not found")
 }
@@ -90,10 +91,28 @@ func (u *authUsecase) ValidateClientAccess(ctx context.Context, userCtx *domain.
 	}
 }
 
-// CheckPermission 権限チェック（将来の実装用）
+// CheckPermission 権限チェック
 func (u *authUsecase) CheckPermission(ctx context.Context, userCtx *domain.UserContext, feature, action string) error {
-	// 将来の実装: operator_assignmentsやclient_role_permissionsテーブルを使用した権限チェック
-	return nil
+	switch userCtx.UserType {
+	case domain.UserTypeOperator:
+		// オペレーターの場合、operator_assignmentsテーブルでロールを確認
+		// 現時点では簡易実装（将来はoperator_assignmentsテーブルの実装が必要）
+		// ADMIN: 全操作可能
+		// OPERATOR: 一部操作可能
+		// VIEWER: 閲覧のみ
+		// 現時点では一旦許可（実装後に詳細なチェックを追加）
+		return nil
+	case domain.UserTypeClientUser:
+		// クライアントユーザーの場合、client_role_permissionsテーブルで権限を確認
+		// 現時点では簡易実装（将来はclient_user_rolesとclient_role_permissionsテーブルの実装が必要）
+		// 1. client_user_rolesテーブルからユーザーのロールを取得
+		// 2. 各ロールのclient_role_permissionsテーブルから権限を取得
+		// 3. featureとactionの組み合わせが許可されているか確認
+		// 現時点では一旦許可（実装後に詳細なチェックを追加）
+		return nil
+	default:
+		return errors.New("unknown user type")
+	}
 }
 
 // uuidFromPGType pgtype.UUIDからuuid.UUIDに変換
@@ -103,4 +122,3 @@ func uuidFromPGType(pgUUID pgtype.UUID) uuid.UUID {
 	}
 	return pgUUID.Bytes
 }
-

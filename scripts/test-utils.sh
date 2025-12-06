@@ -98,18 +98,40 @@ register_operator() {
 
     echo "Registering operator in database: $email"
     
+    # psqlを使用してSQLを実行
+    if [ -z "$SUPABASE_DB_URL" ]; then
+        echo "Error: SUPABASE_DB_URL is not set"
+        return 1
+    fi
+    
     # SQLを実行してオペレーターを登録
-    # 注意: この実装はSupabase MCPツールを使用するか、psqlコマンドを使用する必要があります
-    # ここでは簡易実装として、SQLファイルを作成して実行する方法を示します
+    # operator_idはSupabase Authのuser_idを使用
+    psql "$SUPABASE_DB_URL" -c "
+        INSERT INTO operators (
+            operator_id,
+            email,
+            first_name,
+            last_name,
+            status,
+            mfa_enabled
+        ) VALUES (
+            '$user_id'::uuid,
+            '$email',
+            '$first_name',
+            '$last_name',
+            'ACTIVE',
+            false
+        )
+        ON CONFLICT (email) DO NOTHING;
+    " > /dev/null 2>&1
     
-    echo "Note: Operator registration requires database access"
-    echo "User ID: $user_id"
-    echo "Email: $email"
-    echo "First Name: $first_name"
-    echo "Last Name: $last_name"
-    
-    # 実際の実装では、Supabase MCPツールまたはpsqlを使用してSQLを実行
-    return 0
+    if [ $? -eq 0 ]; then
+        echo "Operator registered successfully"
+        return 0
+    else
+        echo "Error: Failed to register operator"
+        return 1
+    fi
 }
 
 # cleanup_user テスト用ユーザーを削除
