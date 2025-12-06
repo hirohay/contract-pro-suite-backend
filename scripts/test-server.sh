@@ -3,7 +3,8 @@
 # APIサーバーの起動とテスト実行スクリプト
 # ユーザー作成から認証テストまで一連のフローを実行
 
-set -e
+# set -e を削除（エラー時に即座に終了しないようにする）
+# set -e
 
 # スクリプトのディレクトリを取得
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,7 +104,7 @@ echo "Test 1: Health Check"
 echo "=========================================="
 
 response=$(curl -s -w "\n%{http_code}" "${API_URL}/health")
-body=$(echo "$response" | head -n -1)
+body=$(echo "$response" | sed '$d')
 status_code=$(echo "$response" | tail -n 1)
 
 if [ "$status_code" = "200" ] && [ "$body" = "OK" ]; then
@@ -170,10 +171,12 @@ echo "=========================================="
 echo "Test 5: Authentication Endpoint (/api/v1/auth/me)"
 echo "=========================================="
 
+# X-Client-IDヘッダーを追加（TenantMiddlewareの要件）
 response=$(curl -s -w "\n%{http_code}" \
     -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "X-Client-ID: ${DEFAULT_CLIENT_ID:-00000000-0000-0000-0000-000000000000}" \
     "${API_URL}/api/v1/auth/me")
-body=$(echo "$response" | head -n -1)
+body=$(echo "$response" | sed '$d')
 status_code=$(echo "$response" | tail -n 1)
 
 if [ "$status_code" = "200" ]; then

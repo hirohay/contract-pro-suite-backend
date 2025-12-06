@@ -21,6 +21,9 @@ func New(cfg *config.Config) (*DB, error) {
 		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
 
+	// IPv6接続を許可（デフォルトのDialFuncを使用）
+	// DialFuncを設定しないことで、pgxが自動的にIPv6/IPv4を選択
+
 	// 接続プール設定
 	poolConfig.MaxConns = int32(cfg.DBMaxConns)
 	poolConfig.MinConns = int32(cfg.DBMinConns)
