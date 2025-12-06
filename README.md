@@ -95,6 +95,18 @@ go fmt ./...
 golangci-lint run
 ```
 
+## マイグレーション
+
+データベースマイグレーションの実行方法については、[MIGRATION.md](MIGRATION.md)を参照してください。
+
+## テスト
+
+APIサーバーの起動と動作確認については、[TESTING.md](TESTING.md)を参照してください。
+
+```bash
+golangci-lint run
+```
+
 ## ライセンス
 
 Copyright (c) ContractProSuite開発チーム
