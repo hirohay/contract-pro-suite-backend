@@ -14,7 +14,7 @@ import (
 	"contract-pro-suite/internal/interceptor"
 	"contract-pro-suite/internal/shared/config"
 	sharedfx "contract-pro-suite/internal/shared/fx"
-	pbauth "contract-pro-suite/proto/proto/auth"
+	pbauth "contract-pro-suite/proto/auth"
 	authfx "contract-pro-suite/services/auth/fx"
 	"contract-pro-suite/services/auth/repository"
 	"contract-pro-suite/services/auth/server"
@@ -63,6 +63,9 @@ func startGRPCServer(
 	)
 
 	// 認証サービスを登録
+	if authServer == nil {
+		return fmt.Errorf("authServer is nil")
+	}
 	pbauth.RegisterAuthServiceServer(grpcServer, authServer)
 
 	// gRPCリフレクションを有効化（開発環境用、テスト用）

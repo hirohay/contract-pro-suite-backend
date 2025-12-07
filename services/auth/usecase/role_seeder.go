@@ -26,8 +26,7 @@ type PermissionConfig struct {
 }
 
 // createDefaultRoles デフォルトロールと権限を作成
-func (u *authUsecase) createDefaultRoles(ctx context.Context, tx dbgen.DBTX, clientID uuid.UUID) error {
-	queries := dbgen.New(tx)
+func (u *authUsecase) createDefaultRoles(ctx context.Context, queries *dbgen.Queries, clientID uuid.UUID) error {
 
 	// デフォルトロール定義
 	defaultRoles := []DefaultRoleConfig{

@@ -1,0 +1,7 @@
+./client_repository.go
+./client_role_permission_repository.go
+./client_role_repository.go
+./client_user_repository.go
+./client_user_role_repository.go
+./operator_assignment_repository.go
+./operator_repository.go

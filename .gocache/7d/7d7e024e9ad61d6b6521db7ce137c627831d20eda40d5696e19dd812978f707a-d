@@ -1,0 +1,9 @@
+./client_role_permissions.sql.go
+./client_roles.sql.go
+./client_user_roles.sql.go
+./client_users.sql.go
+./clients.sql.go
+./db.go
+./models.go
+./operator_assignments.sql.go
+./operators.sql.go

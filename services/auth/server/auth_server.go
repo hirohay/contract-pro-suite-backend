@@ -2,13 +2,18 @@ package server
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"contract-pro-suite/internal/interceptor"
-	pbauth "contract-pro-suite/proto/proto/auth"
+	pbauth "contract-pro-suite/proto/auth"
 	"contract-pro-suite/services/auth/usecase"
+	dbgen "contract-pro-suite/sqlc"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // AuthServer 認証gRPCサーバー
@@ -133,4 +138,238 @@ func (s *AuthServer) SignupClient(ctx context.Context, req *pbauth.SignupClientR
 		AdminUserId: result.AdminUserID.String(),
 		AdminEmail:  result.AdminEmail,
 	}, nil
+}
+
+// ListClientUsers クライアントユーザー一覧取得
+func (s *AuthServer) ListClientUsers(ctx context.Context, req *pbauth.ListClientUsersRequest) (*pbauth.ListClientUsersResponse, error) {
+	// ユーザーコンテキストを取得
+	userCtx, ok := interceptor.GetEnhancedUserContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "unauthorized")
+	}
+
+	// パラメータの取得
+	limit := req.GetLimit()
+	offset := req.GetOffset()
+
+	// ユースケースを呼び出し
+	users, total, err := s.authUsecase.ListClientUsers(ctx, userCtx, limit, offset)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list client users: %v", err)
+	}
+
+	// レスポンスを作成
+	pbUsers := make([]*pbauth.ClientUser, len(users))
+	for i, user := range users {
+		pbUsers[i] = convertClientUserToPB(user)
+	}
+
+	return &pbauth.ListClientUsersResponse{
+		Users: pbUsers,
+		Total: total,
+	}, nil
+}
+
+// GetClientUser クライアントユーザー詳細取得
+func (s *AuthServer) GetClientUser(ctx context.Context, req *pbauth.GetClientUserRequest) (*pbauth.GetClientUserResponse, error) {
+	// ユーザーコンテキストを取得
+	userCtx, ok := interceptor.GetEnhancedUserContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "unauthorized")
+	}
+
+	// リクエストのバリデーション
+	clientUserID, err := uuid.Parse(req.GetClientUserId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid client_user_id: %v", err)
+	}
+
+	// ユースケースを呼び出し
+	user, err := s.authUsecase.GetClientUser(ctx, userCtx, clientUserID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get client user: %v", err)
+	}
+
+	// レスポンスを作成
+	return &pbauth.GetClientUserResponse{
+		User: convertClientUserToPB(user),
+	}, nil
+}
+
+// CreateClientUser クライアントユーザー作成
+func (s *AuthServer) CreateClientUser(ctx context.Context, req *pbauth.CreateClientUserRequest) (*pbauth.CreateClientUserResponse, error) {
+	// ユーザーコンテキストを取得
+	userCtx, ok := interceptor.GetEnhancedUserContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "unauthorized")
+	}
+
+	// リクエストのバリデーション
+	if req.GetEmail() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "email is required")
+	}
+	if req.GetPassword() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "password is required")
+	}
+	if req.GetFirstName() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "first_name is required")
+	}
+	if req.GetLastName() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "last_name is required")
+	}
+
+	// パラメータの構築
+	params := usecase.CreateClientUserParams{
+		Email:     req.GetEmail(),
+		Password:  req.GetPassword(),
+		FirstName: req.GetFirstName(),
+		LastName:  req.GetLastName(),
+	}
+
+	if req.Department != nil {
+		params.Department = req.Department
+	}
+	if req.Position != nil {
+		params.Position = req.Position
+	}
+	if req.Settings != nil {
+		params.Settings = *req.Settings
+	}
+
+	// ユースケースを呼び出し
+	user, err := s.authUsecase.CreateClientUser(ctx, userCtx, params)
+	if err != nil {
+		errMsg := err.Error()
+		if errMsg == "email already exists: "+req.GetEmail() {
+			return nil, status.Errorf(codes.AlreadyExists, "%s", errMsg)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to create client user: %v", err)
+	}
+
+	// レスポンスを作成
+	return &pbauth.CreateClientUserResponse{
+		User: convertClientUserToPB(user),
+	}, nil
+}
+
+// UpdateClientUser クライアントユーザー更新
+func (s *AuthServer) UpdateClientUser(ctx context.Context, req *pbauth.UpdateClientUserRequest) (*pbauth.UpdateClientUserResponse, error) {
+	// ユーザーコンテキストを取得
+	userCtx, ok := interceptor.GetEnhancedUserContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "unauthorized")
+	}
+
+	// リクエストのバリデーション
+	clientUserID, err := uuid.Parse(req.GetClientUserId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid client_user_id: %v", err)
+	}
+
+	// パラメータの構築
+	params := usecase.UpdateClientUserParams{}
+
+	if req.Email != nil {
+		params.Email = req.Email
+	}
+	if req.FirstName != nil {
+		params.FirstName = req.FirstName
+	}
+	if req.LastName != nil {
+		params.LastName = req.LastName
+	}
+	if req.Department != nil {
+		params.Department = req.Department
+	}
+	if req.Position != nil {
+		params.Position = req.Position
+	}
+	if req.Settings != nil {
+		params.Settings = req.Settings
+	}
+	if req.Status != nil {
+		params.Status = req.Status
+	}
+
+	// ユースケースを呼び出し
+	user, err := s.authUsecase.UpdateClientUser(ctx, userCtx, clientUserID, params)
+	if err != nil {
+		errMsg := err.Error()
+		if req.Email != nil && errMsg == "email already exists: "+*req.Email {
+			return nil, status.Errorf(codes.AlreadyExists, "%s", errMsg)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to update client user: %v", err)
+	}
+
+	// レスポンスを作成
+	return &pbauth.UpdateClientUserResponse{
+		User: convertClientUserToPB(user),
+	}, nil
+}
+
+// DeleteClientUser クライアントユーザー削除
+func (s *AuthServer) DeleteClientUser(ctx context.Context, req *pbauth.DeleteClientUserRequest) (*pbauth.DeleteClientUserResponse, error) {
+	// ユーザーコンテキストを取得
+	userCtx, ok := interceptor.GetEnhancedUserContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "unauthorized")
+	}
+
+	// リクエストのバリデーション
+	clientUserID, err := uuid.Parse(req.GetClientUserId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid client_user_id: %v", err)
+	}
+
+	// ユースケースを呼び出し
+	if err := s.authUsecase.DeleteClientUser(ctx, userCtx, clientUserID); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to delete client user: %v", err)
+	}
+
+	// レスポンスを作成
+	return &pbauth.DeleteClientUserResponse{}, nil
+}
+
+// convertClientUserToPB dbgen.ClientUserをpbauth.ClientUserに変換
+func convertClientUserToPB(user dbgen.ClientUser) *pbauth.ClientUser {
+	pbUser := &pbauth.ClientUser{
+		ClientUserId: uuidFromPGType(user.ClientUserID).String(),
+		ClientId:     uuidFromPGType(user.ClientID).String(),
+		Email:        user.Email,
+		FirstName:    user.FirstName,
+		LastName:     user.LastName,
+		Status:       user.Status,
+		Settings:     string(user.Settings),
+	}
+
+	// CreatedAtの変換
+	if user.CreatedAt.Valid {
+		pbUser.CreatedAt = user.CreatedAt.Time.Format(time.RFC3339)
+	} else {
+		pbUser.CreatedAt = time.Time{}.Format(time.RFC3339)
+	}
+
+	// UpdatedAtの変換
+	if user.UpdatedAt.Valid {
+		pbUser.UpdatedAt = user.UpdatedAt.Time.Format(time.RFC3339)
+	} else {
+		pbUser.UpdatedAt = time.Time{}.Format(time.RFC3339)
+	}
+
+	if user.Department.Valid {
+		pbUser.Department = &user.Department.String
+	}
+	if user.Position.Valid {
+		pbUser.Position = &user.Position.String
+	}
+
+	return pbUser
+}
+
+// uuidFromPGType pgtype.UUIDからuuid.UUIDに変換
+func uuidFromPGType(pgUUID pgtype.UUID) uuid.UUID {
+	if !pgUUID.Valid {
+		return uuid.Nil
+	}
+	return pgUUID.Bytes
 }

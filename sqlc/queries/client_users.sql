@@ -1,12 +1,18 @@
 -- name: GetClientUser :one
 SELECT * FROM client_users
 WHERE client_user_id = $1
+  AND client_id = $2
   AND deleted_at IS NULL;
 
 -- name: GetClientUserByEmail :one
 SELECT * FROM client_users
 WHERE client_id = $1
   AND email = $2
+  AND deleted_at IS NULL;
+
+-- name: GetClientUserByUserIDOnly :one
+SELECT * FROM client_users
+WHERE client_user_id = $1
   AND deleted_at IS NULL;
 
 -- name: ListClientUsers :many
@@ -35,15 +41,16 @@ RETURNING *;
 -- name: UpdateClientUser :one
 UPDATE client_users
 SET
-    email = COALESCE($2, email),
-    first_name = COALESCE($3, first_name),
-    last_name = COALESCE($4, last_name),
-    department = COALESCE($5, department),
-    position = COALESCE($6, position),
-    settings = COALESCE($7, settings),
-    status = COALESCE($8, status),
+    email = COALESCE($3, email),
+    first_name = COALESCE($4, first_name),
+    last_name = COALESCE($5, last_name),
+    department = COALESCE($6, department),
+    position = COALESCE($7, position),
+    settings = COALESCE($8, settings),
+    status = COALESCE($9, status),
     updated_at = now()
 WHERE client_user_id = $1
+  AND client_id = $2
   AND deleted_at IS NULL
 RETURNING *;
 
@@ -51,8 +58,9 @@ RETURNING *;
 UPDATE client_users
 SET
     deleted_at = now(),
-    deleted_by = $2,
+    deleted_by = $3,
     updated_at = now()
 WHERE client_user_id = $1
+  AND client_id = $2
   AND deleted_at IS NULL;
 

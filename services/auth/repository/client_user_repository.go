@@ -3,19 +3,21 @@ package repository
 import (
 	"context"
 
+	db "contract-pro-suite/sqlc"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	db "contract-pro-suite/sqlc"
 )
 
 // ClientUserRepository クライアントユーザーリポジトリ
 type ClientUserRepository interface {
-	GetByID(ctx context.Context, clientUserID uuid.UUID) (db.ClientUser, error)
+	GetByID(ctx context.Context, clientID uuid.UUID, clientUserID uuid.UUID) (db.ClientUser, error)
+	GetByUserIDOnly(ctx context.Context, clientUserID uuid.UUID) (db.ClientUser, error) // client_user_idのみで検索（GetUserContext用）
 	GetByEmail(ctx context.Context, clientID uuid.UUID, email string) (db.ClientUser, error)
 	List(ctx context.Context, clientID uuid.UUID, limit, offset int32) ([]db.ClientUser, error)
 	Create(ctx context.Context, params db.CreateClientUserParams) (db.ClientUser, error)
-	Update(ctx context.Context, params db.UpdateClientUserParams) (db.ClientUser, error)
-	Delete(ctx context.Context, clientUserID uuid.UUID, deletedBy uuid.UUID) error
+	Update(ctx context.Context, clientID uuid.UUID, params db.UpdateClientUserParams) (db.ClientUser, error)
+	Delete(ctx context.Context, clientID uuid.UUID, clientUserID uuid.UUID, deletedBy uuid.UUID) error
 }
 
 type clientUserRepository struct {
@@ -29,14 +31,21 @@ func NewClientUserRepository(queries *db.Queries) ClientUserRepository {
 	}
 }
 
-func (r *clientUserRepository) GetByID(ctx context.Context, clientUserID uuid.UUID) (db.ClientUser, error) {
-	return r.queries.GetClientUser(ctx, pgtype.UUID{Bytes: clientUserID, Valid: true})
+func (r *clientUserRepository) GetByID(ctx context.Context, clientID uuid.UUID, clientUserID uuid.UUID) (db.ClientUser, error) {
+	return r.queries.GetClientUser(ctx, db.GetClientUserParams{
+		ClientUserID: pgtype.UUID{Bytes: clientUserID, Valid: true},
+		ClientID:     pgtype.UUID{Bytes: clientID, Valid: true},
+	})
+}
+
+func (r *clientUserRepository) GetByUserIDOnly(ctx context.Context, clientUserID uuid.UUID) (db.ClientUser, error) {
+	return r.queries.GetClientUserByUserIDOnly(ctx, pgtype.UUID{Bytes: clientUserID, Valid: true})
 }
 
 func (r *clientUserRepository) GetByEmail(ctx context.Context, clientID uuid.UUID, email string) (db.ClientUser, error) {
 	return r.queries.GetClientUserByEmail(ctx, db.GetClientUserByEmailParams{
 		ClientID: pgtype.UUID{Bytes: clientID, Valid: true},
-		Email:     email,
+		Email:    email,
 	})
 }
 
@@ -52,13 +61,16 @@ func (r *clientUserRepository) Create(ctx context.Context, params db.CreateClien
 	return r.queries.CreateClientUser(ctx, params)
 }
 
-func (r *clientUserRepository) Update(ctx context.Context, params db.UpdateClientUserParams) (db.ClientUser, error) {
+func (r *clientUserRepository) Update(ctx context.Context, clientID uuid.UUID, params db.UpdateClientUserParams) (db.ClientUser, error) {
+	// client_idをパラメータに追加
+	params.ClientID = pgtype.UUID{Bytes: clientID, Valid: true}
 	return r.queries.UpdateClientUser(ctx, params)
 }
 
-func (r *clientUserRepository) Delete(ctx context.Context, clientUserID uuid.UUID, deletedBy uuid.UUID) error {
+func (r *clientUserRepository) Delete(ctx context.Context, clientID uuid.UUID, clientUserID uuid.UUID, deletedBy uuid.UUID) error {
 	return r.queries.DeleteClientUser(ctx, db.DeleteClientUserParams{
 		ClientUserID: pgtype.UUID{Bytes: clientUserID, Valid: true},
+		ClientID:     pgtype.UUID{Bytes: clientID, Valid: true},
 		DeletedBy:    pgtype.UUID{Bytes: deletedBy, Valid: true},
 	})
 }

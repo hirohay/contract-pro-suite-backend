@@ -29,6 +29,11 @@ func New(cfg *config.Config) (*DB, error) {
 	poolConfig.MinConns = int32(cfg.DBMinConns)
 	poolConfig.MaxConnLifetime = cfg.DBMaxConnLifetime
 	poolConfig.MaxConnIdleTime = cfg.DBMaxConnIdleTime
+	
+	// Supabaseの接続プーラー（pgbouncer）を使用している場合、
+	// transactionモードでは準備済みステートメントの使用に制限がある
+	// 接続URLがpooler.supabase.com:6543の場合は、直接接続（db.supabase.com:5432）に変更することを推奨
+	// または、pgbouncerのsessionモードを使用する
 
 	// 接続プールを作成
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)

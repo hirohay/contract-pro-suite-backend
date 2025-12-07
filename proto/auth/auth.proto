@@ -11,6 +11,18 @@ service AuthService {
   // SignupClient サービス利用開始時のアカウント登録（認証不要）
   // 新規クライアント（企業）を登録し、同時にそのクライアントの管理者権限を持つユーザーを作成
   rpc SignupClient(SignupClientRequest) returns (SignupClientResponse);
+  
+  // クライアントユーザー管理
+  // ListClientUsers クライアントユーザー一覧取得（認証必要、権限: users:READ）
+  rpc ListClientUsers(ListClientUsersRequest) returns (ListClientUsersResponse);
+  // GetClientUser クライアントユーザー詳細取得（認証必要、権限: users:READ）
+  rpc GetClientUser(GetClientUserRequest) returns (GetClientUserResponse);
+  // CreateClientUser クライアントユーザー作成（認証必要、権限: users:WRITE）
+  rpc CreateClientUser(CreateClientUserRequest) returns (CreateClientUserResponse);
+  // UpdateClientUser クライアントユーザー更新（認証必要、権限: users:WRITE）
+  rpc UpdateClientUser(UpdateClientUserRequest) returns (UpdateClientUserResponse);
+  // DeleteClientUser クライアントユーザー削除（認証必要、権限: users:DELETE）
+  rpc DeleteClientUser(DeleteClientUserRequest) returns (DeleteClientUserResponse);
 }
 
 // GetMeRequest 現在のユーザー情報取得リクエスト
@@ -51,5 +63,85 @@ message SignupClientResponse {
   string client_name = 2;   // クライアント名
   string admin_user_id = 3; // 管理者ユーザーID（UUID）
   string admin_email = 4;    // 管理者メールアドレス
+}
+
+// ListClientUsersRequest クライアントユーザー一覧取得リクエスト
+message ListClientUsersRequest {
+  int32 limit = 1;   // 取得件数（デフォルト: 50、最大: 100）
+  int32 offset = 2;  // オフセット（デフォルト: 0）
+}
+
+// ListClientUsersResponse クライアントユーザー一覧取得レスポンス
+message ListClientUsersResponse {
+  repeated ClientUser users = 1;  // ユーザー一覧
+  int32 total = 2;                // 総件数
+}
+
+// GetClientUserRequest クライアントユーザー詳細取得リクエスト
+message GetClientUserRequest {
+  string client_user_id = 1;  // クライアントユーザーID（UUID）
+}
+
+// GetClientUserResponse クライアントユーザー詳細取得レスポンス
+message GetClientUserResponse {
+  ClientUser user = 1;
+}
+
+// CreateClientUserRequest クライアントユーザー作成リクエスト
+message CreateClientUserRequest {
+  string email = 1;           // メールアドレス（必須）
+  string password = 2;        // パスワード（必須）
+  string first_name = 3;       // 名（必須）
+  string last_name = 4;        // 姓（必須）
+  optional string department = 5;  // 部署（オプション）
+  optional string position = 6;      // 役職（オプション）
+  optional string settings = 7;      // 設定（JSON文字列、オプション、デフォルト: {}）
+}
+
+// CreateClientUserResponse クライアントユーザー作成レスポンス
+message CreateClientUserResponse {
+  ClientUser user = 1;
+}
+
+// UpdateClientUserRequest クライアントユーザー更新リクエスト
+message UpdateClientUserRequest {
+  string client_user_id = 1;   // クライアントユーザーID（UUID、必須）
+  optional string email = 2;   // メールアドレス（オプション）
+  optional string first_name = 3;  // 名（オプション）
+  optional string last_name = 4;   // 姓（オプション）
+  optional string department = 5;  // 部署（オプション）
+  optional string position = 6;    // 役職（オプション）
+  optional string settings = 7;    // 設定（JSON文字列、オプション）
+  optional string status = 8;       // ステータス（ACTIVE, INACTIVE, SUSPENDED、オプション）
+}
+
+// UpdateClientUserResponse クライアントユーザー更新レスポンス
+message UpdateClientUserResponse {
+  ClientUser user = 1;
+}
+
+// DeleteClientUserRequest クライアントユーザー削除リクエスト
+message DeleteClientUserRequest {
+  string client_user_id = 1;  // クライアントユーザーID（UUID）
+}
+
+// DeleteClientUserResponse クライアントユーザー削除レスポンス
+message DeleteClientUserResponse {
+  // 空（成功時のみ返却）
+}
+
+// ClientUser クライアントユーザー情報
+message ClientUser {
+  string client_user_id = 1;  // クライアントユーザーID（UUID）
+  string client_id = 2;       // クライアントID（UUID）
+  string email = 3;           // メールアドレス
+  string first_name = 4;      // 名
+  string last_name = 5;       // 姓
+  optional string department = 6;  // 部署
+  optional string position = 7;    // 役職
+  string status = 8;          // ステータス（ACTIVE, INACTIVE, SUSPENDED）
+  string settings = 9;         // 設定（JSON文字列）
+  string created_at = 10;     // 作成日時（ISO 8601）
+  string updated_at = 11;     // 更新日時（ISO 8601）
 }
 

@@ -21,14 +21,14 @@ INSERT INTO clients (
     status,
     settings
 ) VALUES (
-    $1, NULLIF($2, ''), $3, $4, $5, $6, $7
+    $1, $2, $3, $4, $5, $6, $7
 )
 RETURNING client_id, slug, company_code, name, e_sign_mode, retention_default_months, status, settings, deleted_at, deleted_by, created_at, updated_at
 `
 
 type CreateClientParams struct {
 	Slug                   string      `json:"slug"`
-	Column2                interface{} `json:"column_2"`
+	CompanyCode            pgtype.Text `json:"company_code"`
 	Name                   string      `json:"name"`
 	ESignMode              string      `json:"e_sign_mode"`
 	RetentionDefaultMonths int32       `json:"retention_default_months"`
@@ -36,11 +36,10 @@ type CreateClientParams struct {
 	Settings               []byte      `json:"settings"`
 }
 
-// :param company_code text
 func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Client, error) {
 	row := q.db.QueryRow(ctx, createClient,
 		arg.Slug,
-		arg.Column2,
+		arg.CompanyCode,
 		arg.Name,
 		arg.ESignMode,
 		arg.RetentionDefaultMonths,

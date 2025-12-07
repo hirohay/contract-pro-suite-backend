@@ -12,9 +12,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	"contract-pro-suite/internal/interceptor"
-	pbauth "contract-pro-suite/proto/proto/auth"
+	pbauth "contract-pro-suite/proto/auth"
 	"contract-pro-suite/services/auth/domain"
 	"contract-pro-suite/services/auth/usecase"
+	dbgen "contract-pro-suite/sqlc"
 )
 
 // stringPtr 文字列ポインタを生成するヘルパー関数
@@ -51,6 +52,43 @@ func (m *MockAuthUsecase) SignupClient(ctx context.Context, params usecase.Signu
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*usecase.SignupClientResult), args.Error(1)
+}
+
+func (m *MockAuthUsecase) ListClientUsers(ctx context.Context, userCtx *domain.UserContext, limit, offset int32) ([]dbgen.ClientUser, int32, error) {
+	args := m.Called(ctx, userCtx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, int32(0), args.Error(2)
+	}
+	return args.Get(0).([]dbgen.ClientUser), args.Get(1).(int32), args.Error(2)
+}
+
+func (m *MockAuthUsecase) GetClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID) (dbgen.ClientUser, error) {
+	args := m.Called(ctx, userCtx, clientUserID)
+	if args.Get(0) == nil {
+		return dbgen.ClientUser{}, args.Error(1)
+	}
+	return args.Get(0).(dbgen.ClientUser), args.Error(1)
+}
+
+func (m *MockAuthUsecase) CreateClientUser(ctx context.Context, userCtx *domain.UserContext, params usecase.CreateClientUserParams) (dbgen.ClientUser, error) {
+	args := m.Called(ctx, userCtx, params)
+	if args.Get(0) == nil {
+		return dbgen.ClientUser{}, args.Error(1)
+	}
+	return args.Get(0).(dbgen.ClientUser), args.Error(1)
+}
+
+func (m *MockAuthUsecase) UpdateClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID, params usecase.UpdateClientUserParams) (dbgen.ClientUser, error) {
+	args := m.Called(ctx, userCtx, clientUserID, params)
+	if args.Get(0) == nil {
+		return dbgen.ClientUser{}, args.Error(1)
+	}
+	return args.Get(0).(dbgen.ClientUser), args.Error(1)
+}
+
+func (m *MockAuthUsecase) DeleteClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID) error {
+	args := m.Called(ctx, userCtx, clientUserID)
+	return args.Error(0)
 }
 
 func TestAuthServer_GetMe(t *testing.T) {

@@ -3,6 +3,7 @@ package interceptor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -180,31 +181,34 @@ func TenantInterceptor(
 			return handler(ctx, req)
 		}
 
-		// メタデータからclient_idを取得
+		// メタデータからclient_idを取得（優先順位: サブドメイン > x-client-idヘッダー > デフォルト値）
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "metadata not found")
 		}
 
-		// x-client-idヘッダーから取得を試みる
-		clientIDHeaders := md.Get("x-client-id")
-		var clientIDStr string
-		if len(clientIDHeaders) > 0 {
-			clientIDStr = clientIDHeaders[0]
-		}
+		// 優先1: サブドメイン（authorityメタデータ）から取得
+		clientID, err := extractClientIDFromSubdomain(ctx, md, cfg, clientRepo)
+		if err == nil {
+			// サブドメインから正常に取得できた場合
+		} else {
+			// 優先2: x-client-idヘッダーから取得を試みる
+			clientIDHeaders := md.Get("x-client-id")
+			var clientIDStr string
+			if len(clientIDHeaders) > 0 {
+				clientIDStr = clientIDHeaders[0]
+			}
 
-		// TODO: サブドメインからの取得も実装する必要がある
-		// 現時点ではx-client-idヘッダーからのみ取得
+			if clientIDStr == "" {
+				// 優先3: デフォルトのクライアントIDを使用
+				clientIDStr = cfg.DefaultClientID
+			}
 
-		if clientIDStr == "" {
-			// デフォルトのクライアントIDを使用
-			clientIDStr = cfg.DefaultClientID
-		}
-
-		// UUIDとしてパース
-		clientID, err := uuid.Parse(clientIDStr)
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid client_id format")
+			// UUIDとしてパース
+			clientID, err = uuid.Parse(clientIDStr)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid client_id format")
+			}
 		}
 
 		// client_idの存在確認と有効性チェック
@@ -240,6 +244,105 @@ func GetClientIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	return clientID, ok
 }
 
+// ExtractClientIDFromSubdomain gRPCメタデータからサブドメインを抽出し、clientIDを取得（再利用可能な関数）
+func ExtractClientIDFromSubdomain(
+	ctx context.Context,
+	md metadata.MD,
+	cfg *config.Config,
+	clientRepo repository.ClientRepository,
+) (uuid.UUID, error) {
+	// gRPCのauthorityメタデータからHost情報を取得
+	authorities := md.Get(":authority")
+	if len(authorities) == 0 {
+		return uuid.Nil, errors.New("authority not found")
+	}
+
+	host := authorities[0]
+	if host == "" {
+		return uuid.Nil, errors.New("empty authority")
+	}
+
+	// サブドメインの検証
+	if err := ValidateSubdomain(host, cfg); err != nil {
+		return uuid.Nil, fmt.Errorf("subdomain validation failed: %w", err)
+	}
+
+	// サブドメインからslugを抽出
+	slug, err := ExtractSlugFromHost(host, cfg.BaseDomain)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to extract slug: %w", err)
+	}
+
+	// slugからclientIDを取得（再利用可能な関数を使用）
+	return GetClientIDBySlug(ctx, slug, clientRepo)
+}
+
+// GetClientIDBySlug slugからclient_id（UUID）を取得（再利用可能な関数）
+func GetClientIDBySlug(ctx context.Context, slug string, clientRepo repository.ClientRepository) (uuid.UUID, error) {
+	client, err := clientRepo.GetBySlug(ctx, slug)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to get client by slug: %w", err)
+	}
+
+	if !client.ClientID.Valid {
+		return uuid.Nil, errors.New("client not found")
+	}
+
+	return client.ClientID.Bytes, nil
+}
+
+// ExtractSlugFromHost サブドメインからslugを抽出（再利用可能な関数）
+func ExtractSlugFromHost(host string, baseDomain string) (string, error) {
+	// ポート番号を除去
+	if idx := strings.Index(host, ":"); idx != -1 {
+		host = host[:idx]
+	}
+
+	// ベースドメインで終わるか確認
+	if !strings.HasSuffix(host, "."+baseDomain) && host != baseDomain {
+		return "", errors.New("invalid domain")
+	}
+
+	// サブドメイン部分を抽出
+	if host == baseDomain {
+		return "", errors.New("no subdomain found")
+	}
+
+	// "subdomain.baseDomain" から "subdomain" を抽出
+	subdomain := strings.TrimSuffix(host, "."+baseDomain)
+	if subdomain == "" {
+		return "", errors.New("empty subdomain")
+	}
+
+	return subdomain, nil
+}
+
+// ValidateSubdomain サブドメインが許可されたドメインか検証（再利用可能な関数）
+func ValidateSubdomain(host string, cfg *config.Config) error {
+	if !cfg.EnableSubdomainValidation {
+		return nil // 検証が無効な場合は常に許可
+	}
+
+	allowedDomains := cfg.AllowedDomains()
+	for _, allowedDomain := range allowedDomains {
+		if strings.HasSuffix(host, allowedDomain) || host == allowedDomain {
+			return nil
+		}
+	}
+
+	return errors.New("domain not allowed")
+}
+
+// extractClientIDFromSubdomain gRPCメタデータからサブドメインを抽出し、clientIDを取得（内部用、ExtractClientIDFromSubdomainを使用）
+func extractClientIDFromSubdomain(
+	ctx context.Context,
+	md metadata.MD,
+	cfg *config.Config,
+	clientRepo repository.ClientRepository,
+) (uuid.UUID, error) {
+	return ExtractClientIDFromSubdomain(ctx, md, cfg, clientRepo)
+}
+
 // getStringClaim クレームから文字列値を取得
 func getStringClaim(claims jwt.MapClaims, key string) string {
 	if val, ok := claims[key].(string); ok {
@@ -247,4 +350,3 @@ func getStringClaim(claims jwt.MapClaims, key string) string {
 	}
 	return ""
 }
-

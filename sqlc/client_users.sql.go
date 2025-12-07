@@ -75,30 +75,38 @@ const deleteClientUser = `-- name: DeleteClientUser :exec
 UPDATE client_users
 SET
     deleted_at = now(),
-    deleted_by = $2,
+    deleted_by = $3,
     updated_at = now()
 WHERE client_user_id = $1
+  AND client_id = $2
   AND deleted_at IS NULL
 `
 
 type DeleteClientUserParams struct {
 	ClientUserID pgtype.UUID `json:"client_user_id"`
+	ClientID     pgtype.UUID `json:"client_id"`
 	DeletedBy    pgtype.UUID `json:"deleted_by"`
 }
 
 func (q *Queries) DeleteClientUser(ctx context.Context, arg DeleteClientUserParams) error {
-	_, err := q.db.Exec(ctx, deleteClientUser, arg.ClientUserID, arg.DeletedBy)
+	_, err := q.db.Exec(ctx, deleteClientUser, arg.ClientUserID, arg.ClientID, arg.DeletedBy)
 	return err
 }
 
 const getClientUser = `-- name: GetClientUser :one
 SELECT client_user_id, client_id, email, first_name, last_name, department, position, settings, status, deleted_at, deleted_by, created_at, updated_at FROM client_users
 WHERE client_user_id = $1
+  AND client_id = $2
   AND deleted_at IS NULL
 `
 
-func (q *Queries) GetClientUser(ctx context.Context, clientUserID pgtype.UUID) (ClientUser, error) {
-	row := q.db.QueryRow(ctx, getClientUser, clientUserID)
+type GetClientUserParams struct {
+	ClientUserID pgtype.UUID `json:"client_user_id"`
+	ClientID     pgtype.UUID `json:"client_id"`
+}
+
+func (q *Queries) GetClientUser(ctx context.Context, arg GetClientUserParams) (ClientUser, error) {
+	row := q.db.QueryRow(ctx, getClientUser, arg.ClientUserID, arg.ClientID)
 	var i ClientUser
 	err := row.Scan(
 		&i.ClientUserID,
@@ -132,6 +140,33 @@ type GetClientUserByEmailParams struct {
 
 func (q *Queries) GetClientUserByEmail(ctx context.Context, arg GetClientUserByEmailParams) (ClientUser, error) {
 	row := q.db.QueryRow(ctx, getClientUserByEmail, arg.ClientID, arg.Email)
+	var i ClientUser
+	err := row.Scan(
+		&i.ClientUserID,
+		&i.ClientID,
+		&i.Email,
+		&i.FirstName,
+		&i.LastName,
+		&i.Department,
+		&i.Position,
+		&i.Settings,
+		&i.Status,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getClientUserByUserIDOnly = `-- name: GetClientUserByUserIDOnly :one
+SELECT client_user_id, client_id, email, first_name, last_name, department, position, settings, status, deleted_at, deleted_by, created_at, updated_at FROM client_users
+WHERE client_user_id = $1
+  AND deleted_at IS NULL
+`
+
+func (q *Queries) GetClientUserByUserIDOnly(ctx context.Context, clientUserID pgtype.UUID) (ClientUser, error) {
+	row := q.db.QueryRow(ctx, getClientUserByUserIDOnly, clientUserID)
 	var i ClientUser
 	err := row.Scan(
 		&i.ClientUserID,
@@ -202,21 +237,23 @@ func (q *Queries) ListClientUsers(ctx context.Context, arg ListClientUsersParams
 const updateClientUser = `-- name: UpdateClientUser :one
 UPDATE client_users
 SET
-    email = COALESCE($2, email),
-    first_name = COALESCE($3, first_name),
-    last_name = COALESCE($4, last_name),
-    department = COALESCE($5, department),
-    position = COALESCE($6, position),
-    settings = COALESCE($7, settings),
-    status = COALESCE($8, status),
+    email = COALESCE($3, email),
+    first_name = COALESCE($4, first_name),
+    last_name = COALESCE($5, last_name),
+    department = COALESCE($6, department),
+    position = COALESCE($7, position),
+    settings = COALESCE($8, settings),
+    status = COALESCE($9, status),
     updated_at = now()
 WHERE client_user_id = $1
+  AND client_id = $2
   AND deleted_at IS NULL
 RETURNING client_user_id, client_id, email, first_name, last_name, department, position, settings, status, deleted_at, deleted_by, created_at, updated_at
 `
 
 type UpdateClientUserParams struct {
 	ClientUserID pgtype.UUID `json:"client_user_id"`
+	ClientID     pgtype.UUID `json:"client_id"`
 	Email        string      `json:"email"`
 	FirstName    string      `json:"first_name"`
 	LastName     string      `json:"last_name"`
@@ -229,6 +266,7 @@ type UpdateClientUserParams struct {
 func (q *Queries) UpdateClientUser(ctx context.Context, arg UpdateClientUserParams) (ClientUser, error) {
 	row := q.db.QueryRow(ctx, updateClientUser,
 		arg.ClientUserID,
+		arg.ClientID,
 		arg.Email,
 		arg.FirstName,
 		arg.LastName,

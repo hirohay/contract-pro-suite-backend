@@ -23,6 +23,29 @@ type Client struct {
 	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ClientRole struct {
+	RoleID      pgtype.UUID        `json:"role_id"`
+	ClientID    pgtype.UUID        `json:"client_id"`
+	Code        string             `json:"code"`
+	Name        string             `json:"name"`
+	Description pgtype.Text        `json:"description"`
+	IsSystem    bool               `json:"is_system"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+	DeletedBy   pgtype.UUID        `json:"deleted_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type ClientRolePermission struct {
+	RoleID     pgtype.UUID        `json:"role_id"`
+	Feature    string             `json:"feature"`
+	Action     string             `json:"action"`
+	Granted    bool               `json:"granted"`
+	Conditions []byte             `json:"conditions"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	DeletedBy  pgtype.UUID        `json:"deleted_by"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type ClientUser struct {
 	ClientUserID pgtype.UUID        `json:"client_user_id"`
 	ClientID     pgtype.UUID        `json:"client_id"`
@@ -37,6 +60,16 @@ type ClientUser struct {
 	DeletedBy    pgtype.UUID        `json:"deleted_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ClientUserRole struct {
+	ClientID     pgtype.UUID        `json:"client_id"`
+	ClientUserID pgtype.UUID        `json:"client_user_id"`
+	RoleID       pgtype.UUID        `json:"role_id"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
+	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+	DeletedBy    pgtype.UUID        `json:"deleted_by"`
 }
 
 type Operator struct {
@@ -54,4 +87,15 @@ type Operator struct {
 	DeletedBy         pgtype.UUID        `json:"deleted_by"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type OperatorAssignment struct {
+	ClientID     pgtype.UUID        `json:"client_id"`
+	OperatorID   pgtype.UUID        `json:"operator_id"`
+	Role         string             `json:"role"`
+	Status       string             `json:"status"`
+	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
+	UnassignedAt pgtype.Timestamptz `json:"unassigned_at"`
+	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+	DeletedBy    pgtype.UUID        `json:"deleted_by"`
 }

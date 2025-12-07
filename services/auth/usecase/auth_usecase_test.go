@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"contract-pro-suite/internal/shared/config"
 	"contract-pro-suite/internal/shared/db"
 	"contract-pro-suite/services/auth/domain"
 	dbgen "contract-pro-suite/sqlc"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // MockOperatorRepository モックオペレーターリポジトリ
@@ -69,7 +70,15 @@ type MockClientUserRepository struct {
 	mock.Mock
 }
 
-func (m *MockClientUserRepository) GetByID(ctx context.Context, clientUserID uuid.UUID) (dbgen.ClientUser, error) {
+func (m *MockClientUserRepository) GetByID(ctx context.Context, clientID uuid.UUID, clientUserID uuid.UUID) (dbgen.ClientUser, error) {
+	args := m.Called(ctx, clientID, clientUserID)
+	if args.Get(0) == nil {
+		return dbgen.ClientUser{}, args.Error(1)
+	}
+	return args.Get(0).(dbgen.ClientUser), args.Error(1)
+}
+
+func (m *MockClientUserRepository) GetByUserIDOnly(ctx context.Context, clientUserID uuid.UUID) (dbgen.ClientUser, error) {
 	args := m.Called(ctx, clientUserID)
 	if args.Get(0) == nil {
 		return dbgen.ClientUser{}, args.Error(1)
@@ -101,16 +110,16 @@ func (m *MockClientUserRepository) Create(ctx context.Context, params dbgen.Crea
 	return args.Get(0).(dbgen.ClientUser), args.Error(1)
 }
 
-func (m *MockClientUserRepository) Update(ctx context.Context, params dbgen.UpdateClientUserParams) (dbgen.ClientUser, error) {
-	args := m.Called(ctx, params)
+func (m *MockClientUserRepository) Update(ctx context.Context, clientID uuid.UUID, params dbgen.UpdateClientUserParams) (dbgen.ClientUser, error) {
+	args := m.Called(ctx, clientID, params)
 	if args.Get(0) == nil {
 		return dbgen.ClientUser{}, args.Error(1)
 	}
 	return args.Get(0).(dbgen.ClientUser), args.Error(1)
 }
 
-func (m *MockClientUserRepository) Delete(ctx context.Context, clientUserID uuid.UUID, deletedBy uuid.UUID) error {
-	args := m.Called(ctx, clientUserID, deletedBy)
+func (m *MockClientUserRepository) Delete(ctx context.Context, clientID uuid.UUID, clientUserID uuid.UUID, deletedBy uuid.UUID) error {
+	args := m.Called(ctx, clientID, clientUserID, deletedBy)
 	return args.Error(0)
 }
 
@@ -448,17 +457,39 @@ func TestGetUserContext(t *testing.T) {
 			jwtUserID: uuid.New().String(),
 			setupMock: func() {
 				mockOperatorRepo.On("GetByID", mock.Anything, mock.Anything).Return(dbgen.Operator{}, assert.AnError)
+				mockClientUserRepo.On("GetByUserIDOnly", mock.Anything, mock.Anything).Return(dbgen.ClientUser{}, assert.AnError)
 			},
 			wantErr: true,
 		},
+		{
+			name:      "client user found",
+			jwtUserID: testUserID.String(),
+			setupMock: func() {
+				mockOperatorRepo.On("GetByID", mock.Anything, testUserID).Return(dbgen.Operator{}, assert.AnError)
+				testClientID := uuid.New()
+				clientUser := dbgen.ClientUser{
+					ClientUserID: pgtype.UUID{Bytes: testUserID, Valid: true},
+					ClientID:     pgtype.UUID{Bytes: testClientID, Valid: true},
+					Email:        "client@example.com",
+					FirstName:    "Client",
+					LastName:     "User",
+					Status:       "ACTIVE",
+				}
+				mockClientUserRepo.On("GetByUserIDOnly", mock.Anything, testUserID).Return(clientUser, nil)
+			},
+			wantErr:  false,
+			wantType: domain.UserTypeClientUser,
+		},
 	}
 
-		for _, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockOperatorRepo.ExpectedCalls = nil
 			mockOperatorRepo.Calls = nil
 			mockOperatorAssignmentRepo.ExpectedCalls = nil
 			mockOperatorAssignmentRepo.Calls = nil
+			mockClientUserRepo.ExpectedCalls = nil
+			mockClientUserRepo.Calls = nil
 			tt.setupMock()
 
 			ctx := context.Background()
@@ -819,3 +850,85 @@ func TestCheckPermission(t *testing.T) {
 	}
 }
 
+// TestListClientUsers クライアントユーザー一覧取得のテスト
+func TestListClientUsers(t *testing.T) {
+	mockClientUserRepo := new(MockClientUserRepository)
+	mockOperatorRepo := new(MockOperatorRepository)
+	mockClientRepo := new(MockClientRepository)
+	mockOperatorAssignmentRepo := new(MockOperatorAssignmentRepository)
+	mockClientRoleRepo := new(MockClientRoleRepository)
+	mockClientRolePermissionRepo := new(MockClientRolePermissionRepository)
+	mockClientUserRoleRepo := new(MockClientUserRoleRepository)
+
+	usecase := NewAuthUsecase(
+		mockOperatorRepo,
+		mockClientUserRepo,
+		mockClientRepo,
+		mockOperatorAssignmentRepo,
+		mockClientRoleRepo,
+		mockClientRolePermissionRepo,
+		mockClientUserRoleRepo,
+		nil, // config
+		nil, // database
+	)
+
+	clientID := uuid.New()
+	userCtx := &domain.UserContext{
+		UserID:   uuid.New(),
+		UserType: domain.UserTypeClientUser,
+		Email:    "test@example.com",
+		ClientID: clientID,
+	}
+
+	tests := []struct {
+		name      string
+		limit     int32
+		offset    int32
+		setupMock func()
+		wantErr   bool
+		wantCount int
+	}{
+		{
+			name:   "正常系: 一覧取得成功",
+			limit:  10,
+			offset: 0,
+			setupMock: func() {
+				roleID := uuid.New()
+				// ValidateClientAccessのモック（CheckPermission内で呼ばれる）
+				mockClientUserRoleRepo.On("GetByUserID", mock.Anything, clientID, userCtx.UserID).Return([]dbgen.ClientUserRole{
+					{RoleID: pgtype.UUID{Bytes: roleID, Valid: true}},
+				}, nil)
+				mockClientRolePermissionRepo.On("GetByRoleID", mock.Anything, roleID).Return([]dbgen.ClientRolePermission{
+					{Feature: "users", Action: "READ", Granted: true},
+				}, nil)
+				// Listのモック
+				mockClientUserRepo.On("List", mock.Anything, clientID, int32(10), int32(0)).Return([]dbgen.ClientUser{
+					{Email: "user1@example.com"},
+					{Email: "user2@example.com"},
+				}, nil)
+			},
+			wantErr:   false,
+			wantCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClientUserRepo.ExpectedCalls = nil
+			mockClientUserRepo.Calls = nil
+			if tt.setupMock != nil {
+				tt.setupMock()
+			}
+			ctx := context.Background()
+			users, total, err := usecase.ListClientUsers(ctx, userCtx, tt.limit, tt.offset)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, len(users), tt.wantCount)
+				assert.Equal(t, int32(len(users)), total)
+			}
+		})
+	}
+}

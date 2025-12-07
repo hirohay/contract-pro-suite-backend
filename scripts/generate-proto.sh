@@ -25,6 +25,12 @@ fi
 PROTO_DIR="proto"
 OUT_DIR="proto"
 
+# 古い生成ファイルを削除（proto/proto/ディレクトリに誤って生成されたファイルを削除）
+if [ -d "$OUT_DIR/proto" ]; then
+    echo "Removing old generated files in $OUT_DIR/proto/..."
+    rm -rf "$OUT_DIR/proto"
+fi
+
 # Protocol Buffersコードを生成
 echo "Generating Protocol Buffers code..."
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"contract-pro-suite/internal/shared/config"
@@ -48,6 +49,28 @@ type SignupClientResult struct {
 	AdminEmail  string
 }
 
+// CreateClientUserParams クライアントユーザー作成パラメータ
+type CreateClientUserParams struct {
+	Email      string
+	Password   string
+	FirstName  string
+	LastName   string
+	Department *string
+	Position   *string
+	Settings   string
+}
+
+// UpdateClientUserParams クライアントユーザー更新パラメータ
+type UpdateClientUserParams struct {
+	Email      *string
+	FirstName  *string
+	LastName   *string
+	Department *string
+	Position   *string
+	Settings   *string
+	Status     *string
+}
+
 // AuthUsecase 認証ユースケース
 type AuthUsecase interface {
 	// GetUserContext JWTから取得したユーザーIDでデータベースからユーザー情報と権限を取得
@@ -61,18 +84,30 @@ type AuthUsecase interface {
 
 	// SignupClient サービス利用開始時のアカウント登録（クライアント + 管理者ユーザー作成）
 	SignupClient(ctx context.Context, params SignupClientParams) (*SignupClientResult, error)
+
+	// クライアントユーザー管理
+	// ListClientUsers クライアントユーザー一覧取得（ページネーション対応）
+	ListClientUsers(ctx context.Context, userCtx *domain.UserContext, limit, offset int32) ([]dbgen.ClientUser, int32, error)
+	// GetClientUser クライアントユーザー詳細取得（クライアント分離チェック）
+	GetClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID) (dbgen.ClientUser, error)
+	// CreateClientUser クライアントユーザー作成（Supabase Auth連携、デフォルトロール割り当て）
+	CreateClientUser(ctx context.Context, userCtx *domain.UserContext, params CreateClientUserParams) (dbgen.ClientUser, error)
+	// UpdateClientUser クライアントユーザー更新（クライアント分離チェック）
+	UpdateClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID, params UpdateClientUserParams) (dbgen.ClientUser, error)
+	// DeleteClientUser クライアントユーザー削除（論理削除、クライアント分離チェック）
+	DeleteClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID) error
 }
 
 type authUsecase struct {
-	operatorRepo              repository.OperatorRepository
-	clientUserRepo            repository.ClientUserRepository
-	clientRepo                repository.ClientRepository
-	operatorAssignmentRepo    repository.OperatorAssignmentRepository
-	clientRoleRepo            repository.ClientRoleRepository
-	clientRolePermissionRepo  repository.ClientRolePermissionRepository
-	clientUserRoleRepo        repository.ClientUserRoleRepository
-	cfg                       *config.Config
-	database                  *db.DB
+	operatorRepo             repository.OperatorRepository
+	clientUserRepo           repository.ClientUserRepository
+	clientRepo               repository.ClientRepository
+	operatorAssignmentRepo   repository.OperatorAssignmentRepository
+	clientRoleRepo           repository.ClientRoleRepository
+	clientRolePermissionRepo repository.ClientRolePermissionRepository
+	clientUserRoleRepo       repository.ClientUserRoleRepository
+	cfg                      *config.Config
+	database                 *db.DB
 }
 
 // NewAuthUsecase 認証ユースケースを作成
@@ -133,11 +168,19 @@ func (u *authUsecase) GetUserContext(ctx context.Context, jwtUserID string) (*do
 	}
 
 	// operatorsテーブルにない場合、client_usersテーブルで検索
-	// 注意: client_usersはclient_idが必要なので、全件検索は非効率
-	// 実際の実装では、JWTにclient_idを含めるか、別の方法で特定する必要がある
-	// ここでは簡易実装として、emailで検索（複数クライアントに同じemailが存在する可能性があるため注意）
+	// client_user_idだけで検索（client_idは不要）
+	clientUser, err := u.clientUserRepo.GetByUserIDOnly(ctx, userUUID)
+	if err == nil && clientUser.ClientUserID.Valid {
+		// クライアントユーザーの場合、client_usersテーブルからclient_idを取得
+		clientID := uuidFromPGType(clientUser.ClientID)
+		return &domain.UserContext{
+			UserID:   uuidFromPGType(clientUser.ClientUserID),
+			UserType: domain.UserTypeClientUser,
+			Email:    clientUser.Email,
+			ClientID: clientID,
+		}, nil
+	}
 
-	// 将来的には、JWTにclient_idを含めるか、サブドメインからclient_idを取得する実装が必要
 	return nil, errors.New("user not found")
 }
 
@@ -264,6 +307,15 @@ func (u *authUsecase) SignupClient(ctx context.Context, params SignupClientParam
 	}
 	defer tx.Rollback(ctx)
 
+	// 準備済みステートメントのキャッシュをクリア（再発防止）
+	// pgbouncerのtransactionモードで準備済みステートメントが重複する問題を回避
+	// DEALLOCATE ALL: すべての準備済みステートメントを解放
+	if _, err := tx.Exec(ctx, "DEALLOCATE ALL"); err != nil {
+		// エラーを無視（準備済みステートメントが存在しない場合もある）
+		// ログは出力しない（正常な動作の一部）
+		_ = err
+	}
+
 	queries := dbgen.New(tx)
 
 	// 2. clientsテーブルにクライアントを登録
@@ -281,13 +333,39 @@ func (u *authUsecase) SignupClient(ctx context.Context, params SignupClientParam
 
 	client, err := queries.CreateClient(ctx, clientParams)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create client: %w", err)
+		// 準備済みステートメントのエラーの場合、接続を再確立してリトライ
+		errStr := err.Error()
+		// エラーメッセージに"prepared statement"と"already exists"または"stmtcache"が含まれているか確認
+		isPreparedStmtError := (strings.Contains(errStr, "prepared statement") || strings.Contains(errStr, "stmtcache")) && 
+			(strings.Contains(errStr, "already exists") || strings.Contains(errStr, "42P05"))
+		
+		if isPreparedStmtError {
+			// トランザクションをロールバック
+			_ = tx.Rollback(ctx)
+			// 新しいトランザクションを開始
+			newTx, txErr := u.database.Pool.Begin(ctx)
+			if txErr != nil {
+				return nil, fmt.Errorf("failed to begin transaction after retry: %w", txErr)
+			}
+			tx = newTx
+			defer tx.Rollback(ctx)
+			// 準備済みステートメントをクリア
+			_, _ = tx.Exec(ctx, "DEALLOCATE ALL")
+			queries = dbgen.New(tx)
+			// リトライ
+			client, err = queries.CreateClient(ctx, clientParams)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create client after retry: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to create client: %w", err)
+		}
 	}
 
 	clientID := uuidFromPGType(client.ClientID)
 
 	// 3. デフォルトロールと権限を作成
-	if err := u.createDefaultRoles(ctx, tx, clientID); err != nil {
+	if err := u.createDefaultRoles(ctx, queries, clientID); err != nil {
 		return nil, fmt.Errorf("failed to create default roles: %w", err)
 	}
 
@@ -329,17 +407,18 @@ func (u *authUsecase) SignupClient(ctx context.Context, params SignupClientParam
 		ClientID: pgtype.UUID{Bytes: clientID, Valid: true},
 		Code:     "system_admin",
 	})
-	if err == nil {
-		now := time.Now()
-		_, err = queries.CreateClientUserRole(ctx, dbgen.CreateClientUserRoleParams{
-			ClientID:     pgtype.UUID{Bytes: clientID, Valid: true},
-			ClientUserID: pgtype.UUID{Bytes: adminUserID, Valid: true},
-			RoleID:       systemAdminRole.RoleID,
-			AssignedAt:   pgtype.Timestamptz{Time: now, Valid: true},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to assign system_admin role: %w", err)
-		}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get system_admin role: %w", err)
+	}
+	now := time.Now()
+	_, err = queries.CreateClientUserRole(ctx, dbgen.CreateClientUserRoleParams{
+		ClientID:     pgtype.UUID{Bytes: clientID, Valid: true},
+		ClientUserID: pgtype.UUID{Bytes: adminUserID, Valid: true},
+		RoleID:       systemAdminRole.RoleID,
+		AssignedAt:   pgtype.Timestamptz{Time: now, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to assign system_admin role: %w", err)
 	}
 
 	// 7. トランザクションコミット
@@ -421,4 +500,271 @@ func uuidFromPGType(pgUUID pgtype.UUID) uuid.UUID {
 		return uuid.Nil
 	}
 	return pgUUID.Bytes
+}
+
+// ListClientUsers クライアントユーザー一覧取得
+func (u *authUsecase) ListClientUsers(ctx context.Context, userCtx *domain.UserContext, limit, offset int32) ([]dbgen.ClientUser, int32, error) {
+	// 1. クライアントアクセス権限チェック
+	if err := u.ValidateClientAccess(ctx, userCtx, userCtx.ClientID); err != nil {
+		return nil, 0, err
+	}
+
+	// 2. 権限チェック: users:READ
+	if err := u.CheckPermission(ctx, userCtx, "users", "READ"); err != nil {
+		return nil, 0, fmt.Errorf("permission denied: %w", err)
+	}
+
+	// 3. パラメータのバリデーション
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// 4. 一覧取得
+	users, err := u.clientUserRepo.List(ctx, userCtx.ClientID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list client users: %w", err)
+	}
+
+	// 5. 総件数取得（簡易実装：実際の実装ではCOUNTクエリを使用）
+	// TODO: 総件数取得のためのクエリを追加
+	total := int32(len(users))
+
+	return users, total, nil
+}
+
+// GetClientUser クライアントユーザー詳細取得
+func (u *authUsecase) GetClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID) (dbgen.ClientUser, error) {
+	// 1. クライアントアクセス権限チェック
+	if err := u.ValidateClientAccess(ctx, userCtx, userCtx.ClientID); err != nil {
+		return dbgen.ClientUser{}, err
+	}
+
+	// 2. 権限チェック: users:READ
+	if err := u.CheckPermission(ctx, userCtx, "users", "READ"); err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("permission denied: %w", err)
+	}
+
+	// 3. ユーザー取得（クライアント分離チェック）
+	user, err := u.clientUserRepo.GetByID(ctx, userCtx.ClientID, clientUserID)
+	if err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("failed to get client user: %w", err)
+	}
+
+	return user, nil
+}
+
+// CreateClientUser クライアントユーザー作成
+func (u *authUsecase) CreateClientUser(ctx context.Context, userCtx *domain.UserContext, params CreateClientUserParams) (dbgen.ClientUser, error) {
+	// 1. クライアントアクセス権限チェック
+	if err := u.ValidateClientAccess(ctx, userCtx, userCtx.ClientID); err != nil {
+		return dbgen.ClientUser{}, err
+	}
+
+	// 2. 権限チェック: users:WRITE
+	if err := u.CheckPermission(ctx, userCtx, "users", "WRITE"); err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("permission denied: %w", err)
+	}
+
+	// 3. リクエストバリデーション
+	if params.Email == "" {
+		return dbgen.ClientUser{}, fmt.Errorf("email is required")
+	}
+	if params.Password == "" {
+		return dbgen.ClientUser{}, fmt.Errorf("password is required")
+	}
+	if params.FirstName == "" {
+		return dbgen.ClientUser{}, fmt.Errorf("first_name is required")
+	}
+	if params.LastName == "" {
+		return dbgen.ClientUser{}, fmt.Errorf("last_name is required")
+	}
+
+	// 4. メールアドレスの重複チェック（クライアント内）
+	if _, err := u.clientUserRepo.GetByEmail(ctx, userCtx.ClientID, params.Email); err == nil {
+		return dbgen.ClientUser{}, fmt.Errorf("email already exists: %s", params.Email)
+	}
+
+	// 5. Supabase Authでユーザー作成
+	userID, err := u.createSupabaseUser(ctx, params.Email, params.Password, params.FirstName, params.LastName)
+	if err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("failed to create supabase user: %w", err)
+	}
+
+	// 6. データベーストランザクション開始
+	tx, err := u.database.Pool.Begin(ctx)
+	if err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 準備済みステートメントのキャッシュをクリア（再発防止）
+	if _, err := tx.Exec(ctx, "DEALLOCATE ALL"); err != nil {
+		_ = err // エラーを無視
+	}
+
+	queries := dbgen.New(tx)
+
+	// 7. client_usersテーブルにユーザーを登録
+	department := pgtype.Text{String: "", Valid: false}
+	if params.Department != nil && *params.Department != "" {
+		department = pgtype.Text{String: *params.Department, Valid: true}
+	}
+	position := pgtype.Text{String: "", Valid: false}
+	if params.Position != nil && *params.Position != "" {
+		position = pgtype.Text{String: *params.Position, Valid: true}
+	}
+	settingsJSON := params.Settings
+	if settingsJSON == "" {
+		settingsJSON = "{}"
+	}
+
+	clientUserParams := dbgen.CreateClientUserParams{
+		ClientUserID: pgtype.UUID{Bytes: userID, Valid: true},
+		ClientID:     pgtype.UUID{Bytes: userCtx.ClientID, Valid: true},
+		Email:        params.Email,
+		FirstName:    params.FirstName,
+		LastName:     params.LastName,
+		Department:   department,
+		Position:     position,
+		Settings:     []byte(settingsJSON),
+		Status:       "ACTIVE",
+	}
+
+	user, err := queries.CreateClientUser(ctx, clientUserParams)
+	if err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("failed to create client user: %w", err)
+	}
+
+	// 8. デフォルトロール（member）を自動割り当て
+	memberRole, err := queries.GetClientRoleByCode(ctx, dbgen.GetClientRoleByCodeParams{
+		ClientID: pgtype.UUID{Bytes: userCtx.ClientID, Valid: true},
+		Code:     "member",
+	})
+	if err == nil {
+		now := time.Now()
+		_, err = queries.CreateClientUserRole(ctx, dbgen.CreateClientUserRoleParams{
+			ClientID:     pgtype.UUID{Bytes: userCtx.ClientID, Valid: true},
+			ClientUserID: pgtype.UUID{Bytes: userID, Valid: true},
+			RoleID:       memberRole.RoleID,
+			AssignedAt:   pgtype.Timestamptz{Time: now, Valid: true},
+		})
+		if err != nil {
+			return dbgen.ClientUser{}, fmt.Errorf("failed to assign member role: %w", err)
+		}
+	}
+
+	// 9. トランザクションコミット
+	if err := tx.Commit(ctx); err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return user, nil
+}
+
+// UpdateClientUser クライアントユーザー更新
+func (u *authUsecase) UpdateClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID, params UpdateClientUserParams) (dbgen.ClientUser, error) {
+	// 1. クライアントアクセス権限チェック
+	if err := u.ValidateClientAccess(ctx, userCtx, userCtx.ClientID); err != nil {
+		return dbgen.ClientUser{}, err
+	}
+
+	// 2. 権限チェック: users:WRITE
+	if err := u.CheckPermission(ctx, userCtx, "users", "WRITE"); err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("permission denied: %w", err)
+	}
+
+	// 3. 既存ユーザーの存在確認（クライアント分離チェック）
+	existingUser, err := u.clientUserRepo.GetByID(ctx, userCtx.ClientID, clientUserID)
+	if err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("failed to get client user: %w", err)
+	}
+
+	// 4. メールアドレス変更時は重複チェック
+	if params.Email != nil && *params.Email != existingUser.Email {
+		if _, err := u.clientUserRepo.GetByEmail(ctx, userCtx.ClientID, *params.Email); err == nil {
+			return dbgen.ClientUser{}, fmt.Errorf("email already exists: %s", *params.Email)
+		}
+	}
+
+	// 5. 更新パラメータの構築
+	updateParams := dbgen.UpdateClientUserParams{
+		ClientUserID: pgtype.UUID{Bytes: clientUserID, Valid: true},
+		ClientID:     pgtype.UUID{Bytes: userCtx.ClientID, Valid: true},
+		Email:        existingUser.Email, // デフォルト値として既存の値を設定
+		FirstName:    existingUser.FirstName,
+		LastName:     existingUser.LastName,
+		Department:   existingUser.Department,
+		Position:     existingUser.Position,
+		Settings:     existingUser.Settings,
+		Status:       existingUser.Status,
+	}
+
+	if params.Email != nil {
+		updateParams.Email = *params.Email
+	}
+	if params.FirstName != nil {
+		updateParams.FirstName = *params.FirstName
+	}
+	if params.LastName != nil {
+		updateParams.LastName = *params.LastName
+	}
+	if params.Department != nil {
+		if *params.Department == "" {
+			updateParams.Department = pgtype.Text{Valid: false}
+		} else {
+			updateParams.Department = pgtype.Text{String: *params.Department, Valid: true}
+		}
+	}
+	if params.Position != nil {
+		if *params.Position == "" {
+			updateParams.Position = pgtype.Text{Valid: false}
+		} else {
+			updateParams.Position = pgtype.Text{String: *params.Position, Valid: true}
+		}
+	}
+	if params.Settings != nil {
+		updateParams.Settings = []byte(*params.Settings)
+	}
+	if params.Status != nil {
+		updateParams.Status = *params.Status
+	}
+
+	// 6. データベース更新
+	user, err := u.clientUserRepo.Update(ctx, userCtx.ClientID, updateParams)
+	if err != nil {
+		return dbgen.ClientUser{}, fmt.Errorf("failed to update client user: %w", err)
+	}
+
+	return user, nil
+}
+
+// DeleteClientUser クライアントユーザー削除（論理削除）
+func (u *authUsecase) DeleteClientUser(ctx context.Context, userCtx *domain.UserContext, clientUserID uuid.UUID) error {
+	// 1. クライアントアクセス権限チェック
+	if err := u.ValidateClientAccess(ctx, userCtx, userCtx.ClientID); err != nil {
+		return err
+	}
+
+	// 2. 権限チェック: users:DELETE
+	if err := u.CheckPermission(ctx, userCtx, "users", "DELETE"); err != nil {
+		return fmt.Errorf("permission denied: %w", err)
+	}
+
+	// 3. 既存ユーザーの存在確認（クライアント分離チェック）
+	if _, err := u.clientUserRepo.GetByID(ctx, userCtx.ClientID, clientUserID); err != nil {
+		return fmt.Errorf("failed to get client user: %w", err)
+	}
+
+	// 4. 論理削除
+	if err := u.clientUserRepo.Delete(ctx, userCtx.ClientID, clientUserID, userCtx.UserID); err != nil {
+		return fmt.Errorf("failed to delete client user: %w", err)
+	}
+
+	return nil
 }
