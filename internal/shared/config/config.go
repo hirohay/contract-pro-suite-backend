@@ -12,8 +12,9 @@ import (
 // Config アプリケーション設定
 type Config struct {
 	// アプリケーション設定
-	AppEnv  string `envconfig:"APP_ENV" default:"development"`
-	AppPort string `envconfig:"APP_PORT" default:"8080"`
+	AppEnv   string `envconfig:"APP_ENV" default:"development"`
+	AppPort  string `envconfig:"APP_PORT" default:"8080"` // 非推奨: HTTP REST API用（将来削除予定）
+	GRPCPort string `envconfig:"GRPC_PORT" default:"8081"`
 
 	// Supabase設定
 	SupabaseDBURL          string `envconfig:"SUPABASE_DB_URL" required:"true"`

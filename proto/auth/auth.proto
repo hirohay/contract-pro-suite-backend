@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "contract-pro-suite/proto/auth";
+
+// AuthService 認証サービス
+service AuthService {
+  // GetMe 現在のユーザー情報を取得（認証必要）
+  rpc GetMe(GetMeRequest) returns (GetMeResponse);
+}
+
+// GetMeRequest 現在のユーザー情報取得リクエスト
+message GetMeRequest {
+  // 空（認証情報はメタデータから取得）
+}
+
+// GetMeResponse 現在のユーザー情報取得レスポンス
+message GetMeResponse {
+  string user_id = 1;      // ユーザーID（UUID）
+  string email = 2;        // メールアドレス
+  string user_type = 3;    // ユーザータイプ（OPERATOR or CLIENT_USER）
+  optional string client_id = 4; // クライアントID（UUID、オプション）
+}
+
