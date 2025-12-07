@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"contract-pro-suite/internal/shared/config"
 	"contract-pro-suite/internal/shared/db"
@@ -63,11 +64,15 @@ type AuthUsecase interface {
 }
 
 type authUsecase struct {
-	operatorRepo   repository.OperatorRepository
-	clientUserRepo repository.ClientUserRepository
-	clientRepo     repository.ClientRepository
-	cfg            *config.Config
-	database       *db.DB
+	operatorRepo              repository.OperatorRepository
+	clientUserRepo            repository.ClientUserRepository
+	clientRepo                repository.ClientRepository
+	operatorAssignmentRepo    repository.OperatorAssignmentRepository
+	clientRoleRepo            repository.ClientRoleRepository
+	clientRolePermissionRepo  repository.ClientRolePermissionRepository
+	clientUserRoleRepo        repository.ClientUserRoleRepository
+	cfg                       *config.Config
+	database                  *db.DB
 }
 
 // NewAuthUsecase 認証ユースケースを作成
@@ -75,15 +80,23 @@ func NewAuthUsecase(
 	operatorRepo repository.OperatorRepository,
 	clientUserRepo repository.ClientUserRepository,
 	clientRepo repository.ClientRepository,
+	operatorAssignmentRepo repository.OperatorAssignmentRepository,
+	clientRoleRepo repository.ClientRoleRepository,
+	clientRolePermissionRepo repository.ClientRolePermissionRepository,
+	clientUserRoleRepo repository.ClientUserRoleRepository,
 	cfg *config.Config,
 	database *db.DB,
 ) AuthUsecase {
 	return &authUsecase{
-		operatorRepo:   operatorRepo,
-		clientUserRepo: clientUserRepo,
-		clientRepo:     clientRepo,
-		cfg:            cfg,
-		database:       database,
+		operatorRepo:             operatorRepo,
+		clientUserRepo:           clientUserRepo,
+		clientRepo:               clientRepo,
+		operatorAssignmentRepo:   operatorAssignmentRepo,
+		clientRoleRepo:           clientRoleRepo,
+		clientRolePermissionRepo: clientRolePermissionRepo,
+		clientUserRoleRepo:       clientUserRoleRepo,
+		cfg:                      cfg,
+		database:                 database,
 	}
 }
 
@@ -97,13 +110,25 @@ func (u *authUsecase) GetUserContext(ctx context.Context, jwtUserID string) (*do
 	// まずoperatorsテーブルで検索
 	operator, err := u.operatorRepo.GetByID(ctx, userUUID)
 	if err == nil && operator.OperatorID.Valid {
-		// オペレーターの場合、operator_assignmentsテーブルからクライアントIDを取得する必要がある
-		// 現時点では最初の割り当てを取得（将来は複数クライアント対応が必要）
+		// オペレーターの場合、operator_assignmentsテーブルからクライアントIDを取得
+		// 最初のアクティブな割り当てを取得（将来は複数クライアント対応が必要）
+		assignments, err := u.operatorAssignmentRepo.GetByOperatorID(ctx, userUUID)
+		if err == nil && len(assignments) > 0 {
+			// 最初のアクティブな割り当てのクライアントIDを使用
+			clientID := uuidFromPGType(assignments[0].ClientID)
+			return &domain.UserContext{
+				UserID:   uuidFromPGType(operator.OperatorID),
+				UserType: domain.UserTypeOperator,
+				Email:    operator.Email,
+				ClientID: clientID,
+			}, nil
+		}
+		// 割り当てがない場合でもオペレーターとして返す（ClientIDは空）
 		return &domain.UserContext{
 			UserID:   uuidFromPGType(operator.OperatorID),
 			UserType: domain.UserTypeOperator,
 			Email:    operator.Email,
-			// ClientIDはoperator_assignmentsテーブルから取得する必要がある（現時点では空）
+			ClientID: uuid.Nil,
 		}, nil
 	}
 
@@ -121,9 +146,17 @@ func (u *authUsecase) ValidateClientAccess(ctx context.Context, userCtx *domain.
 	switch userCtx.UserType {
 	case domain.UserTypeOperator:
 		// オペレーターの場合、operator_assignmentsテーブルで割り当てを確認
-		// 現時点では簡易実装（将来はoperator_assignmentsテーブルの実装が必要）
-		// ここでは一旦許可（実装後に詳細なチェックを追加）
-		return nil
+		assignments, err := u.operatorAssignmentRepo.GetByOperatorID(ctx, userCtx.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to get operator assignments: %w", err)
+		}
+		// アクティブな割り当てがあるか確認
+		for _, assignment := range assignments {
+			if uuidFromPGType(assignment.ClientID) == clientID && assignment.Status == "ACTIVE" {
+				return nil
+			}
+		}
+		return errors.New("client access denied: operator not assigned to client")
 	case domain.UserTypeClientUser:
 		// クライアントユーザーの場合、client_idが一致するか確認
 		if userCtx.ClientID != clientID {
@@ -140,20 +173,58 @@ func (u *authUsecase) CheckPermission(ctx context.Context, userCtx *domain.UserC
 	switch userCtx.UserType {
 	case domain.UserTypeOperator:
 		// オペレーターの場合、operator_assignmentsテーブルでロールを確認
-		// 現時点では簡易実装（将来はoperator_assignmentsテーブルの実装が必要）
-		// ADMIN: 全操作可能
-		// OPERATOR: 一部操作可能
-		// VIEWER: 閲覧のみ
-		// 現時点では一旦許可（実装後に詳細なチェックを追加）
-		return nil
+		if userCtx.ClientID == uuid.Nil {
+			return errors.New("operator not assigned to any client")
+		}
+		assignment, err := u.operatorAssignmentRepo.GetByClientAndOperator(ctx, userCtx.ClientID, userCtx.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to get operator assignment: %w", err)
+		}
+		if assignment.Status != "ACTIVE" {
+			return errors.New("operator assignment is not active")
+		}
+		// ロールに基づいて権限チェック
+		switch assignment.Role {
+		case "ADMIN":
+			// ADMIN: 全操作可能
+			return nil
+		case "OPERATOR":
+			// OPERATOR: 一部操作可能（将来拡張可能、現時点では全操作可能）
+			return nil
+		case "VIEWER":
+			// VIEWER: 閲覧のみ
+			if action != "READ" {
+				return errors.New("viewer can only read")
+			}
+			return nil
+		default:
+			return fmt.Errorf("unknown operator role: %s", assignment.Role)
+		}
 	case domain.UserTypeClientUser:
-		// クライアントユーザーの場合、client_role_permissionsテーブルで権限を確認
-		// 現時点では簡易実装（将来はclient_user_rolesとclient_role_permissionsテーブルの実装が必要）
+		// クライアントユーザーの場合、client_user_roles → client_role_permissionsで権限確認
 		// 1. client_user_rolesテーブルからユーザーのロールを取得
-		// 2. 各ロールのclient_role_permissionsテーブルから権限を取得
-		// 3. featureとactionの組み合わせが許可されているか確認
-		// 現時点では一旦許可（実装後に詳細なチェックを追加）
-		return nil
+		userRoles, err := u.clientUserRoleRepo.GetByUserID(ctx, userCtx.ClientID, userCtx.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to get user roles: %w", err)
+		}
+		if len(userRoles) == 0 {
+			return errors.New("user has no roles assigned")
+		}
+		// 2. 各ロールのclient_role_permissionsテーブルから権限を確認
+		for _, userRole := range userRoles {
+			roleID := uuidFromPGType(userRole.RoleID)
+			permissions, err := u.clientRolePermissionRepo.GetByRoleID(ctx, roleID)
+			if err != nil {
+				continue // エラーが発生しても次のロールを確認
+			}
+			// 3. featureとactionの組み合わせが許可されているか確認
+			for _, perm := range permissions {
+				if perm.Feature == feature && perm.Action == action && perm.Granted {
+					return nil // 権限が見つかった
+				}
+			}
+		}
+		return errors.New("permission denied")
 	default:
 		return errors.New("unknown user type")
 	}
@@ -200,7 +271,7 @@ func (u *authUsecase) SignupClient(ctx context.Context, params SignupClientParam
 	companyCode := pgtype.Text{String: params.CompanyCode, Valid: params.CompanyCode != ""}
 	clientParams := dbgen.CreateClientParams{
 		Slug:                   params.Slug,
-		Column2:                companyCode, // sqlcが生成したフィールド名（company_code）
+		CompanyCode:            companyCode,
 		Name:                   params.Name,
 		ESignMode:              eSignMode,
 		RetentionDefaultMonths: retentionMonths,
@@ -215,13 +286,18 @@ func (u *authUsecase) SignupClient(ctx context.Context, params SignupClientParam
 
 	clientID := uuidFromPGType(client.ClientID)
 
-	// 3. Supabase Auth Admin APIで管理者ユーザーを作成
+	// 3. デフォルトロールと権限を作成
+	if err := u.createDefaultRoles(ctx, tx, clientID); err != nil {
+		return nil, fmt.Errorf("failed to create default roles: %w", err)
+	}
+
+	// 4. Supabase Auth Admin APIで管理者ユーザーを作成
 	adminUserID, err := u.createSupabaseUser(ctx, params.AdminEmail, params.AdminPassword, params.AdminFirstName, params.AdminLastName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create supabase user: %w", err)
 	}
 
-	// 4. client_usersテーブルに管理者ユーザーを登録
+	// 5. client_usersテーブルに管理者ユーザーを登録
 	department := pgtype.Text{String: "", Valid: false}
 	if params.AdminDepartment != nil && *params.AdminDepartment != "" {
 		department = pgtype.Text{String: *params.AdminDepartment, Valid: true}
@@ -248,7 +324,25 @@ func (u *authUsecase) SignupClient(ctx context.Context, params SignupClientParam
 		return nil, fmt.Errorf("failed to create client user: %w", err)
 	}
 
-	// 5. トランザクションコミット
+	// 6. 管理者ユーザーにsystem_adminロールを割り当て
+	systemAdminRole, err := queries.GetClientRoleByCode(ctx, dbgen.GetClientRoleByCodeParams{
+		ClientID: pgtype.UUID{Bytes: clientID, Valid: true},
+		Code:     "system_admin",
+	})
+	if err == nil {
+		now := time.Now()
+		_, err = queries.CreateClientUserRole(ctx, dbgen.CreateClientUserRoleParams{
+			ClientID:     pgtype.UUID{Bytes: clientID, Valid: true},
+			ClientUserID: pgtype.UUID{Bytes: adminUserID, Valid: true},
+			RoleID:       systemAdminRole.RoleID,
+			AssignedAt:   pgtype.Timestamptz{Time: now, Valid: true},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to assign system_admin role: %w", err)
+		}
+	}
+
+	// 7. トランザクションコミット
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}

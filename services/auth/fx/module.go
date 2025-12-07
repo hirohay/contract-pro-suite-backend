@@ -24,15 +24,41 @@ func NewAuthModule() fx.Option {
 		fx.Provide(func(queries *dbgen.Queries) repository.ClientUserRepository {
 			return repository.NewClientUserRepository(queries)
 		}),
+		fx.Provide(func(queries *dbgen.Queries) repository.OperatorAssignmentRepository {
+			return repository.NewOperatorAssignmentRepository(queries)
+		}),
+		fx.Provide(func(queries *dbgen.Queries) repository.ClientRoleRepository {
+			return repository.NewClientRoleRepository(queries)
+		}),
+		fx.Provide(func(queries *dbgen.Queries) repository.ClientRolePermissionRepository {
+			return repository.NewClientRolePermissionRepository(queries)
+		}),
+		fx.Provide(func(queries *dbgen.Queries) repository.ClientUserRoleRepository {
+			return repository.NewClientUserRoleRepository(queries)
+		}),
 		// ユースケースの提供
 		fx.Provide(func(
 			operatorRepo repository.OperatorRepository,
 			clientUserRepo repository.ClientUserRepository,
 			clientRepo repository.ClientRepository,
+			operatorAssignmentRepo repository.OperatorAssignmentRepository,
+			clientRoleRepo repository.ClientRoleRepository,
+			clientRolePermissionRepo repository.ClientRolePermissionRepository,
+			clientUserRoleRepo repository.ClientUserRoleRepository,
 			cfg *config.Config,
 			database *db.DB,
 		) usecase.AuthUsecase {
-			return usecase.NewAuthUsecase(operatorRepo, clientUserRepo, clientRepo, cfg, database)
+			return usecase.NewAuthUsecase(
+				operatorRepo,
+				clientUserRepo,
+				clientRepo,
+				operatorAssignmentRepo,
+				clientRoleRepo,
+				clientRolePermissionRepo,
+				clientUserRoleRepo,
+				cfg,
+				database,
+			)
 		}),
 		// gRPCサーバーの提供
 		fx.Provide(server.NewAuthServer),
