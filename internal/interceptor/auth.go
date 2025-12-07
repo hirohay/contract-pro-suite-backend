@@ -26,6 +26,19 @@ const (
 	clientIDContextKey     contextKey = "client_id"
 )
 
+// isPublicMethod 認証不要の公開メソッドかどうかを判定
+func isPublicMethod(methodName string) bool {
+	publicMethods := []string{
+		"/auth.AuthService/SignupClient",
+	}
+	for _, publicMethod := range publicMethods {
+		if methodName == publicMethod {
+			return true
+		}
+	}
+	return false
+}
+
 // AuthInterceptor JWT検証インターセプター
 func AuthInterceptor(cfg *config.Config) grpc.UnaryServerInterceptor {
 	return func(
@@ -34,6 +47,11 @@ func AuthInterceptor(cfg *config.Config) grpc.UnaryServerInterceptor {
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
+		// 認証不要の公開メソッドの場合はスキップ
+		if isPublicMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
+
 		// メタデータからAuthorizationヘッダーを取得
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
@@ -111,6 +129,11 @@ func EnhancedAuthInterceptor(authUsecase usecase.AuthUsecase) grpc.UnaryServerIn
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
+		// 認証不要の公開メソッドの場合はスキップ
+		if isPublicMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
+
 		// 基本のJWT検証インターセプターで設定されたUserContextを取得
 		jwtUserCtx, ok := GetUserContext(ctx)
 		if !ok {
@@ -152,6 +175,11 @@ func TenantInterceptor(
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
+		// 認証不要の公開メソッドの場合はスキップ（クライアント登録時はclient_idが存在しないため）
+		if isPublicMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
+
 		// メタデータからclient_idを取得
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {

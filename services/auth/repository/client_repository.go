@@ -39,7 +39,7 @@ func (r *clientRepository) GetBySlug(ctx context.Context, slug string) (db.Clien
 }
 
 func (r *clientRepository) GetByCompanyCode(ctx context.Context, companyCode string) (db.Client, error) {
-	return r.queries.GetClientByCompanyCode(ctx, companyCode)
+	return r.queries.GetClientByCompanyCode(ctx, pgtype.Text{String: companyCode, Valid: companyCode != ""})
 }
 
 func (r *clientRepository) List(ctx context.Context, limit, offset int32) ([]db.Client, error) {

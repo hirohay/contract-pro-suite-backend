@@ -50,3 +50,87 @@ func (s *AuthServer) GetMe(ctx context.Context, req *pbauth.GetMeRequest) (*pbau
 	return resp, nil
 }
 
+// SignupClient サービス利用開始時のアカウント登録（クライアント + 管理者ユーザー作成）
+func (s *AuthServer) SignupClient(ctx context.Context, req *pbauth.SignupClientRequest) (*pbauth.SignupClientResponse, error) {
+	// リクエストのバリデーション
+	if req.Name == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "name is required")
+	}
+	if req.Slug == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "slug is required")
+	}
+	if req.AdminEmail == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "admin_email is required")
+	}
+	if req.AdminPassword == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "admin_password is required")
+	}
+	if req.AdminFirstName == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "admin_first_name is required")
+	}
+	if req.AdminLastName == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "admin_last_name is required")
+	}
+
+	// デフォルト値の設定
+	eSignMode := req.GetESignMode()
+	if eSignMode == "" {
+		eSignMode = "WITNESS_OTP"
+	}
+	retentionMonths := req.GetRetentionDefaultMonths()
+	if retentionMonths == 0 {
+		retentionMonths = 84
+	}
+	settings := req.GetSettings()
+	if settings == "" {
+		settings = "{}"
+	}
+
+	// オプションフィールドの処理
+	var adminDepartment *string
+	if dept := req.GetAdminDepartment(); dept != "" {
+		adminDepartment = &dept
+	}
+	var adminPosition *string
+	if pos := req.GetAdminPosition(); pos != "" {
+		adminPosition = &pos
+	}
+
+	// オプションフィールドの処理
+	companyCode := req.GetCompanyCode() // オプション（JIPDEC標準企業コード）
+
+	// ユースケースを呼び出し
+	params := usecase.SignupClientParams{
+		Name:                   req.Name,
+		CompanyCode:            companyCode,
+		Slug:                   req.Slug,
+		ESignMode:              eSignMode,
+		RetentionDefaultMonths: retentionMonths,
+		Settings:               settings,
+		AdminEmail:             req.AdminEmail,
+		AdminPassword:          req.AdminPassword,
+		AdminFirstName:         req.AdminFirstName,
+		AdminLastName:          req.AdminLastName,
+		AdminDepartment:        adminDepartment,
+		AdminPosition:          adminPosition,
+	}
+
+	result, err := s.authUsecase.SignupClient(ctx, params)
+	if err != nil {
+		// エラーの種類に応じて適切なgRPCステータスコードを返す
+		errMsg := err.Error()
+		companyCode := req.GetCompanyCode()
+		if errMsg == "slug already exists: "+req.Slug || (companyCode != "" && errMsg == "company_code already exists: "+companyCode) {
+			return nil, status.Errorf(codes.AlreadyExists, "%s", errMsg)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to signup client: %v", err)
+	}
+
+	// レスポンスを作成
+	return &pbauth.SignupClientResponse{
+		ClientId:    result.ClientID.String(),
+		ClientName:  result.ClientName,
+		AdminUserId: result.AdminUserID.String(),
+		AdminEmail:  result.AdminEmail,
+	}, nil
+}

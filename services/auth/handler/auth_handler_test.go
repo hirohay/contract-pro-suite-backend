@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"contract-pro-suite/internal/middleware"
 	"contract-pro-suite/services/auth/domain"
+	"contract-pro-suite/services/auth/usecase"
 )
 
 // MockAuthUsecase モック認証ユースケース
@@ -35,6 +36,14 @@ func (m *MockAuthUsecase) ValidateClientAccess(ctx context.Context, userCtx *dom
 func (m *MockAuthUsecase) CheckPermission(ctx context.Context, userCtx *domain.UserContext, feature, action string) error {
 	args := m.Called(ctx, userCtx, feature, action)
 	return args.Error(0)
+}
+
+func (m *MockAuthUsecase) SignupClient(ctx context.Context, params usecase.SignupClientParams) (*usecase.SignupClientResult, error) {
+	args := m.Called(ctx, params)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*usecase.SignupClientResult), args.Error(1)
 }
 
 func TestNewAuthHandler(t *testing.T) {

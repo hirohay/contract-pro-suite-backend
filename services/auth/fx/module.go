@@ -3,6 +3,8 @@ package fx
 import (
 	"go.uber.org/fx"
 
+	"contract-pro-suite/internal/shared/config"
+	"contract-pro-suite/internal/shared/db"
 	"contract-pro-suite/services/auth/repository"
 	"contract-pro-suite/services/auth/server"
 	"contract-pro-suite/services/auth/usecase"
@@ -27,8 +29,10 @@ func NewAuthModule() fx.Option {
 			operatorRepo repository.OperatorRepository,
 			clientUserRepo repository.ClientUserRepository,
 			clientRepo repository.ClientRepository,
+			cfg *config.Config,
+			database *db.DB,
 		) usecase.AuthUsecase {
-			return usecase.NewAuthUsecase(operatorRepo, clientUserRepo, clientRepo)
+			return usecase.NewAuthUsecase(operatorRepo, clientUserRepo, clientRepo, cfg, database)
 		}),
 		// gRPCサーバーの提供
 		fx.Provide(server.NewAuthServer),

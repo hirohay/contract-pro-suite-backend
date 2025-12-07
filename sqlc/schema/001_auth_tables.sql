@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "citext";
 CREATE TABLE clients (
     client_id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
     slug text NOT NULL UNIQUE,
-    company_code text NOT NULL UNIQUE,
+    company_code text UNIQUE,  -- オプション（JIPDEC標準企業コード）
     name text NOT NULL,
     e_sign_mode text NOT NULL DEFAULT 'WITNESS_OTP' CHECK (e_sign_mode IN ('WITNESS_OTP', 'OTP_ONLY', 'CERTIFICATE', 'BIOMETRIC', 'SIMPLE_CLICK')),
     retention_default_months integer NOT NULL DEFAULT 84 CHECK (retention_default_months >= 12 AND retention_default_months <= 240),

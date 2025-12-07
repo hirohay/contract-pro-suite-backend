@@ -8,6 +8,9 @@ option go_package = "contract-pro-suite/proto/auth";
 service AuthService {
   // GetMe 現在のユーザー情報を取得（認証必要）
   rpc GetMe(GetMeRequest) returns (GetMeResponse);
+  // SignupClient サービス利用開始時のアカウント登録（認証不要）
+  // 新規クライアント（企業）を登録し、同時にそのクライアントの管理者権限を持つユーザーを作成
+  rpc SignupClient(SignupClientRequest) returns (SignupClientResponse);
 }
 
 // GetMeRequest 現在のユーザー情報取得リクエスト
@@ -21,5 +24,32 @@ message GetMeResponse {
   string email = 2;        // メールアドレス
   string user_type = 3;    // ユーザータイプ（OPERATOR or CLIENT_USER）
   optional string client_id = 4; // クライアントID（UUID、オプション）
+}
+
+// SignupClientRequest サービス利用開始時のアカウント登録リクエスト
+message SignupClientRequest {
+  // クライアント情報
+  string name = 1;                    // クライアント名（必須）
+  optional string company_code = 2;   // 企業コード（オプション、JIPDEC標準企業コード、一意）
+  string slug = 3;                    // スラッグ（必須、一意、サブドメイン用）
+  optional string e_sign_mode = 4;   // 電子署名方式（オプション、デフォルト: WITNESS_OTP）
+  optional int32 retention_default_months = 5; // データ保存期間（月、オプション、デフォルト: 84）
+  optional string settings = 6;       // 設定（JSON文字列、オプション、デフォルト: {}）
+  
+  // 管理者ユーザー情報
+  string admin_email = 10;           // 管理者メールアドレス（必須）
+  string admin_password = 11;        // 管理者パスワード（必須）
+  string admin_first_name = 12;      // 管理者名（必須）
+  string admin_last_name = 13;       // 管理者姓（必須）
+  optional string admin_department = 14; // 管理者部署（オプション）
+  optional string admin_position = 15;   // 管理者役職（オプション）
+}
+
+// SignupClientResponse サービス利用開始時のアカウント登録レスポンス
+message SignupClientResponse {
+  string client_id = 1;      // クライアントID（UUID）
+  string client_name = 2;   // クライアント名
+  string admin_user_id = 3; // 管理者ユーザーID（UUID）
+  string admin_email = 4;    // 管理者メールアドレス
 }
 
