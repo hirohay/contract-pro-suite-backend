@@ -6,10 +6,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"contract-pro-suite/services/auth/domain"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"contract-pro-suite/services/auth/domain"
 )
 
 func TestEnhancedAuthMiddleware(t *testing.T) {
@@ -89,10 +90,10 @@ func TestGetEnhancedUserContext(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		ctx     context.Context
-		wantOk  bool
-		wantID  uuid.UUID
+		name   string
+		ctx    context.Context
+		wantOk bool
+		wantID uuid.UUID
 	}{
 		{
 			name: "enhanced user context exists",
@@ -122,4 +123,3 @@ func TestGetEnhancedUserContext(t *testing.T) {
 		})
 	}
 }
-

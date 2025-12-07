@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"contract-pro-suite/internal/shared/config"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
-	"contract-pro-suite/internal/shared/config"
 )
 
 func TestAuthMiddleware(t *testing.T) {
@@ -84,10 +85,10 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestGetUserContext(t *testing.T) {
 	tests := []struct {
-		name    string
-		ctx     context.Context
-		wantOk  bool
-		wantID  string
+		name   string
+		ctx    context.Context
+		wantOk bool
+		wantID string
 	}{
 		{
 			name: "user context exists",
@@ -159,4 +160,3 @@ func TestGetStringClaim(t *testing.T) {
 		})
 	}
 }
-
