@@ -151,6 +151,29 @@ login_user() {
     return 0
 }
 
+# execute_sql データベースでSQLを実行
+execute_sql() {
+    local sql=$1
+    
+    debug "Executing SQL: ${sql:0:100}..."
+    
+    # psqlが利用可能な場合は使用
+    if command -v psql >/dev/null 2>&1; then
+        if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "Error: SUPABASE_DB_URL is not set" >&2
+            return 1
+        fi
+        echo "$sql" | psql "$SUPABASE_DB_URL" -q -t 2>&1
+        return $?
+    else
+        # psqlが利用できない場合は、SQLを表示して手動実行を促す
+        echo "Note: psql is not installed. SQL execution skipped." >&2
+        echo "SQL to execute manually:" >&2
+        echo "$sql" >&2
+        return 0
+    fi
+}
+
 # register_operator データベースにオペレーター情報を登録
 register_operator() {
     local user_id=$1
@@ -174,15 +197,16 @@ ON CONFLICT (email) DO UPDATE SET
     
     debug "SQL: $sql"
     
-    # 注意: この実装では、Supabase MCPツールを使用してSQLを実行します
-    # 実際の登録は、Supabase MCPツールまたはSupabaseダッシュボードのSQL Editorを使用してください
-    echo "Note: Operator registration SQL (execute manually if needed):" >&2
-    echo "$sql" >&2
-    
-    # テストのため、成功として扱う（実際の登録は手動で実行）
-    # 統合テストでは、Supabase MCPツールを使用してオペレーターを登録する必要があります
-    echo "Operator registration step completed (manual execution may be required)" >&2
-    return 0
+    # SQLを実行
+    if execute_sql "$sql"; then
+        debug "Operator registered successfully"
+        return 0
+    else
+        echo "Warning: Failed to execute SQL. Operator may not be registered." >&2
+        echo "SQL to execute manually:" >&2
+        echo "$sql" >&2
+        return 1
+    fi
 }
 
 # cleanup_user テスト用ユーザーを削除

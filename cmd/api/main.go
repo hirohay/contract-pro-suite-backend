@@ -12,15 +12,16 @@ import (
 	"go.uber.org/fx"
 
 	"contract-pro-suite/internal/interceptor"
-	sharedfx "contract-pro-suite/internal/shared/fx"
 	"contract-pro-suite/internal/shared/config"
+	sharedfx "contract-pro-suite/internal/shared/fx"
+	pbauth "contract-pro-suite/proto/proto/auth"
 	authfx "contract-pro-suite/services/auth/fx"
 	"contract-pro-suite/services/auth/repository"
 	"contract-pro-suite/services/auth/server"
 	"contract-pro-suite/services/auth/usecase"
-	pbauth "contract-pro-suite/proto/proto/auth"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -63,6 +64,9 @@ func startGRPCServer(
 
 	// 認証サービスを登録
 	pbauth.RegisterAuthServiceServer(grpcServer, authServer)
+
+	// gRPCリフレクションを有効化（開発環境用、テスト用）
+	reflection.Register(grpcServer)
 
 	// リスナーの作成
 	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)

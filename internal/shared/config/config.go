@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -63,8 +64,10 @@ func Load() (*Config, error) {
 	// .envファイルがあれば読み込む（開発環境用）
 	// 本番環境では環境変数を直接設定することを想定
 	if _, err := os.Stat(".env"); err == nil {
-		// .envファイルの読み込みは外部ライブラリ（godotenv等）を使用する場合
-		// 今回は環境変数から直接読み込む方式を採用
+		if err := godotenv.Load(); err != nil {
+			// .envファイルの読み込みに失敗しても続行（環境変数が設定されている場合がある）
+			// ログは出力しない（本番環境で.envファイルがない場合にエラーが出ないように）
+		}
 	}
 
 	if err := envconfig.Process("", &cfg); err != nil {

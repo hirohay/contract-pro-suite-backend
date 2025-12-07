@@ -144,9 +144,29 @@ golangci-lint run
 
 ## テスト
 
-APIサーバーの起動と動作確認については、[TESTING.md](TESTING.md)を参照してください。
+### 単体テスト
 
 ```bash
+go test ./...
+```
+
+### 統合テスト
+
+gRPCサーバーの統合テストを実行：
+
+```bash
+./scripts/test-grpc.sh
+```
+
+詳細については、[TESTING.md](TESTING.md)を参照してください。
+
+### コードフォーマットとリンター
+
+```bash
+# コードフォーマット
+go fmt ./...
+
+# リンター
 golangci-lint run
 ```
 
