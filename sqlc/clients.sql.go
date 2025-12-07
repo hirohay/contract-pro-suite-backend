@@ -21,25 +21,26 @@ INSERT INTO clients (
     status,
     settings
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7
+    $1, NULLIF($2, ''), $3, $4, $5, $6, $7
 )
 RETURNING client_id, slug, company_code, name, e_sign_mode, retention_default_months, status, settings, deleted_at, deleted_by, created_at, updated_at
 `
 
 type CreateClientParams struct {
-	Slug                   string `json:"slug"`
-	CompanyCode            string `json:"company_code"`
-	Name                   string `json:"name"`
-	ESignMode              string `json:"e_sign_mode"`
-	RetentionDefaultMonths int32  `json:"retention_default_months"`
-	Status                 string `json:"status"`
-	Settings               []byte `json:"settings"`
+	Slug                   string      `json:"slug"`
+	Column2                interface{} `json:"column_2"`
+	Name                   string      `json:"name"`
+	ESignMode              string      `json:"e_sign_mode"`
+	RetentionDefaultMonths int32       `json:"retention_default_months"`
+	Status                 string      `json:"status"`
+	Settings               []byte      `json:"settings"`
 }
 
+// :param company_code text
 func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Client, error) {
 	row := q.db.QueryRow(ctx, createClient,
 		arg.Slug,
-		arg.CompanyCode,
+		arg.Column2,
 		arg.Name,
 		arg.ESignMode,
 		arg.RetentionDefaultMonths,
@@ -116,7 +117,7 @@ WHERE company_code = $1
   AND deleted_at IS NULL
 `
 
-func (q *Queries) GetClientByCompanyCode(ctx context.Context, companyCode string) (Client, error) {
+func (q *Queries) GetClientByCompanyCode(ctx context.Context, companyCode pgtype.Text) (Client, error) {
 	row := q.db.QueryRow(ctx, getClientByCompanyCode, companyCode)
 	var i Client
 	err := row.Scan(
@@ -226,7 +227,7 @@ RETURNING client_id, slug, company_code, name, e_sign_mode, retention_default_mo
 type UpdateClientParams struct {
 	ClientID               pgtype.UUID `json:"client_id"`
 	Slug                   string      `json:"slug"`
-	CompanyCode            string      `json:"company_code"`
+	CompanyCode            pgtype.Text `json:"company_code"`
 	Name                   string      `json:"name"`
 	ESignMode              string      `json:"e_sign_mode"`
 	RetentionDefaultMonths int32       `json:"retention_default_months"`

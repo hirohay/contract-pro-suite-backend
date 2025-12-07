@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_GetMe_FullMethodName = "/auth.AuthService/GetMe"
+	AuthService_GetMe_FullMethodName        = "/auth.AuthService/GetMe"
+	AuthService_SignupClient_FullMethodName = "/auth.AuthService/SignupClient"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -30,6 +31,9 @@ const (
 type AuthServiceClient interface {
 	// GetMe 現在のユーザー情報を取得（認証必要）
 	GetMe(ctx context.Context, in *GetMeRequest, opts ...grpc.CallOption) (*GetMeResponse, error)
+	// SignupClient サービス利用開始時のアカウント登録（認証不要）
+	// 新規クライアント（企業）を登録し、同時にそのクライアントの管理者権限を持つユーザーを作成
+	SignupClient(ctx context.Context, in *SignupClientRequest, opts ...grpc.CallOption) (*SignupClientResponse, error)
 }
 
 type authServiceClient struct {
@@ -50,6 +54,16 @@ func (c *authServiceClient) GetMe(ctx context.Context, in *GetMeRequest, opts ..
 	return out, nil
 }
 
+func (c *authServiceClient) SignupClient(ctx context.Context, in *SignupClientRequest, opts ...grpc.CallOption) (*SignupClientResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignupClientResponse)
+	err := c.cc.Invoke(ctx, AuthService_SignupClient_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -58,6 +72,9 @@ func (c *authServiceClient) GetMe(ctx context.Context, in *GetMeRequest, opts ..
 type AuthServiceServer interface {
 	// GetMe 現在のユーザー情報を取得（認証必要）
 	GetMe(context.Context, *GetMeRequest) (*GetMeResponse, error)
+	// SignupClient サービス利用開始時のアカウント登録（認証不要）
+	// 新規クライアント（企業）を登録し、同時にそのクライアントの管理者権限を持つユーザーを作成
+	SignupClient(context.Context, *SignupClientRequest) (*SignupClientResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -70,6 +87,9 @@ type UnimplementedAuthServiceServer struct{}
 
 func (UnimplementedAuthServiceServer) GetMe(context.Context, *GetMeRequest) (*GetMeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMe not implemented")
+}
+func (UnimplementedAuthServiceServer) SignupClient(context.Context, *SignupClientRequest) (*SignupClientResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SignupClient not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -110,6 +130,24 @@ func _AuthService_GetMe_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_SignupClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignupClientRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).SignupClient(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_SignupClient_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).SignupClient(ctx, req.(*SignupClientRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -120,6 +158,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMe",
 			Handler:    _AuthService_GetMe_Handler,
+		},
+		{
+			MethodName: "SignupClient",
+			Handler:    _AuthService_SignupClient_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

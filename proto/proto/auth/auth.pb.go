@@ -127,6 +127,210 @@ func (x *GetMeResponse) GetClientId() string {
 	return ""
 }
 
+// SignupClientRequest サービス利用開始時のアカウント登録リクエスト
+type SignupClientRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// クライアント情報
+	Name                   string  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                            // クライアント名（必須）
+	CompanyCode            *string `protobuf:"bytes,2,opt,name=company_code,json=companyCode,proto3,oneof" json:"company_code,omitempty"`                                     // 企業コード（オプション、JIPDEC標準企業コード、一意）
+	Slug                   string  `protobuf:"bytes,3,opt,name=slug,proto3" json:"slug,omitempty"`                                                                            // スラッグ（必須、一意、サブドメイン用）
+	ESignMode              *string `protobuf:"bytes,4,opt,name=e_sign_mode,json=eSignMode,proto3,oneof" json:"e_sign_mode,omitempty"`                                         // 電子署名方式（オプション、デフォルト: WITNESS_OTP）
+	RetentionDefaultMonths *int32  `protobuf:"varint,5,opt,name=retention_default_months,json=retentionDefaultMonths,proto3,oneof" json:"retention_default_months,omitempty"` // データ保存期間（月、オプション、デフォルト: 84）
+	Settings               *string `protobuf:"bytes,6,opt,name=settings,proto3,oneof" json:"settings,omitempty"`                                                              // 設定（JSON文字列、オプション、デフォルト: {}）
+	// 管理者ユーザー情報
+	AdminEmail      string  `protobuf:"bytes,10,opt,name=admin_email,json=adminEmail,proto3" json:"admin_email,omitempty"`                      // 管理者メールアドレス（必須）
+	AdminPassword   string  `protobuf:"bytes,11,opt,name=admin_password,json=adminPassword,proto3" json:"admin_password,omitempty"`             // 管理者パスワード（必須）
+	AdminFirstName  string  `protobuf:"bytes,12,opt,name=admin_first_name,json=adminFirstName,proto3" json:"admin_first_name,omitempty"`        // 管理者名（必須）
+	AdminLastName   string  `protobuf:"bytes,13,opt,name=admin_last_name,json=adminLastName,proto3" json:"admin_last_name,omitempty"`           // 管理者姓（必須）
+	AdminDepartment *string `protobuf:"bytes,14,opt,name=admin_department,json=adminDepartment,proto3,oneof" json:"admin_department,omitempty"` // 管理者部署（オプション）
+	AdminPosition   *string `protobuf:"bytes,15,opt,name=admin_position,json=adminPosition,proto3,oneof" json:"admin_position,omitempty"`       // 管理者役職（オプション）
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SignupClientRequest) Reset() {
+	*x = SignupClientRequest{}
+	mi := &file_proto_auth_auth_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignupClientRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignupClientRequest) ProtoMessage() {}
+
+func (x *SignupClientRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_auth_auth_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignupClientRequest.ProtoReflect.Descriptor instead.
+func (*SignupClientRequest) Descriptor() ([]byte, []int) {
+	return file_proto_auth_auth_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SignupClientRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetCompanyCode() string {
+	if x != nil && x.CompanyCode != nil {
+		return *x.CompanyCode
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetSlug() string {
+	if x != nil {
+		return x.Slug
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetESignMode() string {
+	if x != nil && x.ESignMode != nil {
+		return *x.ESignMode
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetRetentionDefaultMonths() int32 {
+	if x != nil && x.RetentionDefaultMonths != nil {
+		return *x.RetentionDefaultMonths
+	}
+	return 0
+}
+
+func (x *SignupClientRequest) GetSettings() string {
+	if x != nil && x.Settings != nil {
+		return *x.Settings
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetAdminEmail() string {
+	if x != nil {
+		return x.AdminEmail
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetAdminPassword() string {
+	if x != nil {
+		return x.AdminPassword
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetAdminFirstName() string {
+	if x != nil {
+		return x.AdminFirstName
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetAdminLastName() string {
+	if x != nil {
+		return x.AdminLastName
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetAdminDepartment() string {
+	if x != nil && x.AdminDepartment != nil {
+		return *x.AdminDepartment
+	}
+	return ""
+}
+
+func (x *SignupClientRequest) GetAdminPosition() string {
+	if x != nil && x.AdminPosition != nil {
+		return *x.AdminPosition
+	}
+	return ""
+}
+
+// SignupClientResponse サービス利用開始時のアカウント登録レスポンス
+type SignupClientResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClientId      string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`            // クライアントID（UUID）
+	ClientName    string                 `protobuf:"bytes,2,opt,name=client_name,json=clientName,proto3" json:"client_name,omitempty"`      // クライアント名
+	AdminUserId   string                 `protobuf:"bytes,3,opt,name=admin_user_id,json=adminUserId,proto3" json:"admin_user_id,omitempty"` // 管理者ユーザーID（UUID）
+	AdminEmail    string                 `protobuf:"bytes,4,opt,name=admin_email,json=adminEmail,proto3" json:"admin_email,omitempty"`      // 管理者メールアドレス
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignupClientResponse) Reset() {
+	*x = SignupClientResponse{}
+	mi := &file_proto_auth_auth_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignupClientResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignupClientResponse) ProtoMessage() {}
+
+func (x *SignupClientResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_auth_auth_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignupClientResponse.ProtoReflect.Descriptor instead.
+func (*SignupClientResponse) Descriptor() ([]byte, []int) {
+	return file_proto_auth_auth_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SignupClientResponse) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *SignupClientResponse) GetClientName() string {
+	if x != nil {
+		return x.ClientName
+	}
+	return ""
+}
+
+func (x *SignupClientResponse) GetAdminUserId() string {
+	if x != nil {
+		return x.AdminUserId
+	}
+	return ""
+}
+
+func (x *SignupClientResponse) GetAdminEmail() string {
+	if x != nil {
+		return x.AdminEmail
+	}
+	return ""
+}
+
 var File_proto_auth_auth_proto protoreflect.FileDescriptor
 
 const file_proto_auth_auth_proto_rawDesc = "" +
@@ -139,9 +343,38 @@ const file_proto_auth_auth_proto_rawDesc = "" +
 	"\tuser_type\x18\x03 \x01(\tR\buserType\x12 \n" +
 	"\tclient_id\x18\x04 \x01(\tH\x00R\bclientId\x88\x01\x01B\f\n" +
 	"\n" +
-	"_client_id2?\n" +
+	"_client_id\"\xd3\x04\n" +
+	"\x13SignupClientRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12&\n" +
+	"\fcompany_code\x18\x02 \x01(\tH\x00R\vcompanyCode\x88\x01\x01\x12\x12\n" +
+	"\x04slug\x18\x03 \x01(\tR\x04slug\x12#\n" +
+	"\ve_sign_mode\x18\x04 \x01(\tH\x01R\teSignMode\x88\x01\x01\x12=\n" +
+	"\x18retention_default_months\x18\x05 \x01(\x05H\x02R\x16retentionDefaultMonths\x88\x01\x01\x12\x1f\n" +
+	"\bsettings\x18\x06 \x01(\tH\x03R\bsettings\x88\x01\x01\x12\x1f\n" +
+	"\vadmin_email\x18\n" +
+	" \x01(\tR\n" +
+	"adminEmail\x12%\n" +
+	"\x0eadmin_password\x18\v \x01(\tR\radminPassword\x12(\n" +
+	"\x10admin_first_name\x18\f \x01(\tR\x0eadminFirstName\x12&\n" +
+	"\x0fadmin_last_name\x18\r \x01(\tR\radminLastName\x12.\n" +
+	"\x10admin_department\x18\x0e \x01(\tH\x04R\x0fadminDepartment\x88\x01\x01\x12*\n" +
+	"\x0eadmin_position\x18\x0f \x01(\tH\x05R\radminPosition\x88\x01\x01B\x0f\n" +
+	"\r_company_codeB\x0e\n" +
+	"\f_e_sign_modeB\x1b\n" +
+	"\x19_retention_default_monthsB\v\n" +
+	"\t_settingsB\x13\n" +
+	"\x11_admin_departmentB\x11\n" +
+	"\x0f_admin_position\"\x99\x01\n" +
+	"\x14SignupClientResponse\x12\x1b\n" +
+	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x1f\n" +
+	"\vclient_name\x18\x02 \x01(\tR\n" +
+	"clientName\x12\"\n" +
+	"\radmin_user_id\x18\x03 \x01(\tR\vadminUserId\x12\x1f\n" +
+	"\vadmin_email\x18\x04 \x01(\tR\n" +
+	"adminEmail2\x86\x01\n" +
 	"\vAuthService\x120\n" +
-	"\x05GetMe\x12\x12.auth.GetMeRequest\x1a\x13.auth.GetMeResponseB\x1fZ\x1dcontract-pro-suite/proto/authb\x06proto3"
+	"\x05GetMe\x12\x12.auth.GetMeRequest\x1a\x13.auth.GetMeResponse\x12E\n" +
+	"\fSignupClient\x12\x19.auth.SignupClientRequest\x1a\x1a.auth.SignupClientResponseB\x1fZ\x1dcontract-pro-suite/proto/authb\x06proto3"
 
 var (
 	file_proto_auth_auth_proto_rawDescOnce sync.Once
@@ -155,16 +388,20 @@ func file_proto_auth_auth_proto_rawDescGZIP() []byte {
 	return file_proto_auth_auth_proto_rawDescData
 }
 
-var file_proto_auth_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_proto_auth_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_proto_auth_auth_proto_goTypes = []any{
-	(*GetMeRequest)(nil),  // 0: auth.GetMeRequest
-	(*GetMeResponse)(nil), // 1: auth.GetMeResponse
+	(*GetMeRequest)(nil),         // 0: auth.GetMeRequest
+	(*GetMeResponse)(nil),        // 1: auth.GetMeResponse
+	(*SignupClientRequest)(nil),  // 2: auth.SignupClientRequest
+	(*SignupClientResponse)(nil), // 3: auth.SignupClientResponse
 }
 var file_proto_auth_auth_proto_depIdxs = []int32{
 	0, // 0: auth.AuthService.GetMe:input_type -> auth.GetMeRequest
-	1, // 1: auth.AuthService.GetMe:output_type -> auth.GetMeResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
+	2, // 1: auth.AuthService.SignupClient:input_type -> auth.SignupClientRequest
+	1, // 2: auth.AuthService.GetMe:output_type -> auth.GetMeResponse
+	3, // 3: auth.AuthService.SignupClient:output_type -> auth.SignupClientResponse
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -176,13 +413,14 @@ func file_proto_auth_auth_proto_init() {
 		return
 	}
 	file_proto_auth_auth_proto_msgTypes[1].OneofWrappers = []any{}
+	file_proto_auth_auth_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_auth_auth_proto_rawDesc), len(file_proto_auth_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -11,7 +11,7 @@ import (
 type Client struct {
 	ClientID               pgtype.UUID        `json:"client_id"`
 	Slug                   string             `json:"slug"`
-	CompanyCode            string             `json:"company_code"`
+	CompanyCode            pgtype.Text        `json:"company_code"`
 	Name                   string             `json:"name"`
 	ESignMode              string             `json:"e_sign_mode"`
 	RetentionDefaultMonths int32              `json:"retention_default_months"`
